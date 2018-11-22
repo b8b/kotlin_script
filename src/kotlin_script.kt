@@ -80,11 +80,11 @@ fun parseMetaData(scriptFileName: String, `in`: InputStream): MetaData {
     val cargs = mutableListOf<String>()
     var rc: Int? = null
     val errors = mutableListOf<String>()
-    `in`.bufferedReader().lineSequence().forEach { line ->
+    `in`.bufferedReader(Charsets.UTF_8).lineSequence().forEach { line ->
         when {
             line.startsWith("///MAIN=") -> main = line.substring(8).trim()
             line.startsWith("///INC=") -> inc.add(line.substring(7).trim())
-            line.startsWith("///CHK=") -> chk.add(line.substring(10).trim())
+            line.startsWith("///CHK=") -> chk.add(line.substring(7).trim())
             line.startsWith("///DEP=") -> dep.add(
                 parseDependency(line.substring(7).trim()).copy(
                     scope = Scope.Compile
@@ -151,7 +151,7 @@ fun parseMetaData(scriptFileName: String, zipFile: File, entryName: String): Met
 }
 
 fun MetaData.store(out: OutputStream) {
-    val w = out.bufferedWriter()
+    val w = out.bufferedWriter(Charsets.UTF_8)
     w.write("///MAIN=$main\n")
     w.write("///CHK=${mainScript.checksum}\n")
     inc.forEach { s ->
@@ -225,9 +225,19 @@ fun String.absoluteToSubPath(): String {
     throw IllegalArgumentException("invalid absolute path: $this")
 }
 
+fun debug(msg: String) = System.console()?.printf("%s\n", msg)
+
+fun File.absoluteUnixPath(): String {
+    val path = this.invariantSeparatorsPath
+    return when {
+        path.startsWith("/") -> path
+        path[1] == ':' -> "/" + path.substring(0, 1) + path.substring(2)
+        else -> error("invalid path: $path")
+    }
+}
+
 class KotlinScript(
     val javaHome: File,
-    val kotlinHome: File?,
     val cacheDir: File,
     val mavenRepoUrl: String,
     val mavenRepoCache: File?,
@@ -245,7 +255,6 @@ class KotlinScript(
         cacheDir, "cache" + File.separator + scriptFile
             .absolutePath
             .absoluteToSubPath()
-            .removeSuffix(".kt")
                 + ".jar"
     )
 
@@ -305,23 +314,6 @@ class KotlinScript(
     }
 
     fun kotlinCompilerArgs(compilerDeps: List<Dependency>): Array<String> {
-        if (kotlinHome != null) {
-            TODO()
-            /*
-            val kotlinBinDir = File(kotlinHome, "bin")
-            val kotlinExe = listOf("kotlinc.exe", "kotlinc", "kotlinc.bat")
-                .map { File(kotlinBinDir, it) }
-                .firstOrNull(File::exists)
-            if (kotlinExe != null) return arrayOf(
-                kotlinExe.absolutePath,
-                "-jdk-home",
-                javaHome.absolutePath,
-                "-kotlin-home",
-                kotlinHome.absolutePath
-            )
-            error("kotlinc not found in kotlin.home: $kotlinHome")
-            */
-        }
         val kotlinVersions = compilerDeps.map { d ->
             if (d.group == "org.jetbrains.kotlin" && d.id == "kotlin-stdlib") {
                 d.version.trim()
@@ -374,11 +366,12 @@ class KotlinScript(
         } catch (ex: FileAlreadyExistsException) {
             Files.setPosixFilePermissions(tmpJarFile.toPath(), permissions)
         }
-        System.err.println("--> recompiling script")
+        debug("--> recompiling script")
         val scriptClassPathArgs = if (scriptClassPath.isEmpty()) emptyList() else listOf(
             "-classpath", scriptClassPath.joinToString(File.pathSeparator)
         )
-        //TODO cached scripts should be used for compilation!
+        // TODO cached scripts should be used for compilation
+        // --> use a temp dir for compilation and also attach script sources to jar
         val incArgs = metaData.inc.map { inc ->
             scriptFile.toPath().resolve(inc.path).toString()
         }
@@ -390,7 +383,7 @@ class KotlinScript(
             scriptFile.absolutePath,
             *incArgs.toTypedArray()
         )
-        System.err.println("+ ${compilerArgs.joinToString(" ")}")
+        debug("+ ${compilerArgs.joinToString(" ")}")
         val compilerProcess = ProcessBuilder(*compilerArgs.toTypedArray())
             .redirectErrorStream(true)
             .start()
@@ -465,7 +458,6 @@ fun main(args: Array<String>) {
     val javaHome = File(
         System.getProperty("java.home").removeSuffix("${File.separator}jre")
     )
-    val kotlinHome = System.getProperty("kotlin.home")?.let(::File)
     val userHome = File(System.getProperty("user.home") ?: error("user.home system property not set"))
     val cacheDir = File(userHome, ".kotlin_script")
     val localRepo = File(userHome, ".m2${File.separator}repository")
@@ -482,7 +474,6 @@ fun main(args: Array<String>) {
 
     val ks = KotlinScript(
         javaHome = javaHome,
-        kotlinHome = kotlinHome,
         cacheDir = cacheDir,
         mavenRepoUrl = mavenRepoUrl,
         mavenRepoCache = mavenRepoCache,
@@ -501,7 +492,59 @@ fun main(args: Array<String>) {
                 metaData.compilerErrors.forEach(System.err::println)
                 System.exit(metaData.compilerExitCode)
             }
-            println(ks.jarFile)
+
+            val kotlinVersion = metaData.dep.first {
+                it.group == "org.jetbrains.kotlin" && it.id == "kotlin-stdlib"
+            }.version
+
+            val destination = File(ks.cacheDir, "kotlin_script-$kotlinVersion.jar")
+            Files.copy(
+                ks.jarFile.toPath(),
+                destination.toPath(),
+                StandardCopyOption.REPLACE_EXISTING)
+            debug("--> installed script compiler to $destination")
+
+            val binDir = File(ks.cacheDir, "bin")
+            Files.createDirectories(binDir.toPath())
+            val batScriptFile = File(binDir, "kotlin_script.bat")
+            val batScriptFileTmp = File(batScriptFile.path + "~")
+            FileWriter(batScriptFileTmp).use { w ->
+                w.write("@echo off\n\"" +
+                        File(javaHome, "bin${File.separator}java").absolutePath +
+                        "\" -jar \"${destination.absolutePath}\" %*\n")
+            }
+            Files.move(batScriptFileTmp.toPath(), batScriptFile.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING)
+            val permissions = setOf(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE,
+                PosixFilePermission.GROUP_READ,
+                PosixFilePermission.GROUP_EXECUTE,
+                PosixFilePermission.OTHERS_READ,
+                PosixFilePermission.OTHERS_EXECUTE
+            )
+            val shScriptFile = File(binDir, "kotlin_script~")
+            try {
+                Files.createFile(
+                    shScriptFile.toPath(),
+                    PosixFilePermissions.asFileAttribute(permissions))
+            } catch (_: UnsupportedOperationException) {
+            } catch (ex: FileAlreadyExistsException) {
+                Files.setPosixFilePermissions(shScriptFile.toPath(), permissions)
+            }
+            FileWriter(shScriptFile).use { w ->
+                w.write("#!/bin/sh\nexec \"" +
+                        File(javaHome, "bin/java").absoluteUnixPath() +
+                        "\" -jar \"${destination.absoluteUnixPath()}\" \"$@\"\n")
+            }
+            Files.move(
+                shScriptFile.toPath(),
+                File(shScriptFile.absolutePath.removeSuffix("~")).toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE)
+            debug("--> updated wrapper scripts in $binDir")
             return
         }
         else -> error("invalid flags: flags")
