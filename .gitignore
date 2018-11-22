@@ -1,0 +1,9 @@
+/build
+/.gradle
+
+/*.iml
+/.idea
+
+/out
+
+/kotlin_script.jar
