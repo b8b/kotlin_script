@@ -76,7 +76,7 @@ do
   esac
 done < "$SRC"
 
-if ! [ -e work/kotlin_script.jar ]; then
+if ! [ work/kotlin_script.jar -nt "$SRC" ]; then
   (
     set -x
     exec "$JAVA_HOME"/bin/java -cp work"$CP" \
@@ -90,7 +90,7 @@ fi
 
 (
   set -x
-  exec "$JAVA_HOME"/bin/java -jar work/kotlin_script.jar \
+  exec "$JAVA_HOME"/bin/java -cp work/kotlin_script.jar kotlin_script \
     --install \
     "$SRC"
 )
