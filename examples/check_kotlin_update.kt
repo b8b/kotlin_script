@@ -2,7 +2,6 @@
 
 ///MAIN=Check_kotlin_updateKt
 
-import java.io.InputStreamReader
 import java.net.URL
 import java.util.*
 
@@ -12,11 +11,9 @@ private val tagsRegex = """"name"\s*:\s*"v([0-9.]+)"""".toRegex()
 fun main() {
     val currentVersion = Any::class.java
         .getResourceAsStream("/kotlin_script.compiler.metadata").use { input ->
-            InputStreamReader(input, Charsets.UTF_8).useLines { lines ->
-                lines.first { it.startsWith("///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:") }
-                    .substring(47)
-                    .substringBefore(':')
-            }
+            input.bufferedReader(Charsets.UTF_8).lineSequence().first { line ->
+                line.startsWith("///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:")
+            }.substring(47).substringBefore(':')
         }
     println("getting tags from github")
     val json = URL(tagsUrl).openStream().use { input ->
