@@ -176,6 +176,7 @@ object kotlin_script {
             }
             manifest.mainAttributes.putIfAbsent(Attributes.Name.MANIFEST_VERSION, "1.0")
             manifest.mainAttributes[Attributes.Name.MAIN_CLASS] = mainClass
+            Files.createDirectories(nf.parent)
             Files.newOutputStream(nf, StandardOpenOption.CREATE).use { out ->
                 manifest.write(out)
             }
