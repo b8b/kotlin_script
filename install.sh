@@ -36,7 +36,7 @@ cygpath()
 }
 fi
 
-mkdir -p work
+mkdir -p work/lib
 
 CP=
 
