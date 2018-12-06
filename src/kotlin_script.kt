@@ -65,13 +65,13 @@ object kotlin_script {
         }
         return Dependency(
             parts[0], parts[1], parts[2],
-            if (ext.isEmpty()) "jar" else ext,
+            if (ext.isEmpty()) ".jar" else ext,
             sha256
         )
     }
 
     fun Dependency.toSpec(): String =
-        "$group:$id:$version:${if (ext != "jar") ext else ""}${if (sha256 != null) ":sha256=$sha256" else ""}"
+        "$group:$id:$version:${if (ext != ".jar") ext else ""}${if (sha256 != null) ":sha256=$sha256" else ""}"
 
     fun parseMetaData(scriptFileName: String, `in`: InputStream): MetaData {
         val metaDataMap = `in`.bufferedReader(Charsets.UTF_8).lineSequence().filter { line ->
@@ -277,7 +277,7 @@ object kotlin_script {
 
         fun resolveLib(dep: Dependency): File {
             val subPath = dep.group.replace(".", "/") + "/" + dep.id + "/" +
-                    dep.version + "/" + "${dep.id}-${dep.version}.${dep.ext}"
+                    dep.version + "/" + "${dep.id}-${dep.version}${dep.ext}"
             if (mavenRepoCache != null) {
                 val f = File(mavenRepoCache, subPath)
                 if (f.exists()) return f
@@ -323,7 +323,7 @@ object kotlin_script {
             Files.createDirectories(File(tmpKotlinHome, "lib").toPath())
             val compilerClassPath = compilerDeps.map { d ->
                 val f = resolveLib(d)
-                val copy = File(tmpKotlinHome, "lib${File.separator}${d.id}.${d.ext}")
+                val copy = File(tmpKotlinHome, "lib${File.separator}${d.id}${d.ext}")
                 if (!copy.exists()) {
                     Files.copy(f.toPath(), copy.toPath(), StandardCopyOption.REPLACE_EXISTING)
                 }
