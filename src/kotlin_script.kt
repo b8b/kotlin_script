@@ -371,7 +371,7 @@ object kotlin_script {
             // TODO cached scripts should be used for compilation
             // --> use a temp dir for compilation and also attach script sources to jar
             val incArgs = metaData.inc.map { inc ->
-                scriptFile.toPath().resolve(inc.path).toString()
+                scriptFile.toPath().parent.resolve(inc.path).toString()
             }
             val compilerArgs: List<String> = listOf(
                 *kotlinCompilerArgs(compilerDeps),
