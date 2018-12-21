@@ -1,3 +1,5 @@
+#!/usr/bin/env kotlin_script
+
 ///MAIN=Access_metadataKt
 
 val metaData = object {
