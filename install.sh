@@ -3,7 +3,9 @@
 : ${REPO:=https://repo1.maven.org/maven2}
 : ${FORCE_DOWNLOAD:=no}
 
-SRC=src/kotlin_script.kt
+SRC=src/installer.kt
+INC=src/KotlinScript.kt
+DST=work/kotlin_script_installer.jar
 
 set -e
 
@@ -19,7 +21,7 @@ deppath()
   local IFS=:
   set -- $1
   echo -n "$1" | tr '.' '/'
-  echo -n "/$2/$3/$2-$3.${4:-jar}"
+  echo -n "/$2/$3/$2-$3${4:-.jar}"
 }
 
 if CYGPATH=$(which cygpath 2>/dev/null); then
@@ -36,6 +38,22 @@ cygpath()
 }
 fi
 
+if FETCH=$(which fetch 2>/dev/null); then
+download()
+{
+  local dst="$1"
+  local src="$2"
+  exec fetch -o "$dst" "$src"
+}
+else
+download()
+{
+  local dst="$1"
+  local src="$2"
+  exec curl -fo "$dst" "$src"
+}
+fi
+
 mkdir -p work/lib
 
 CP=
@@ -46,6 +64,7 @@ do
   '///COMPILER='*)
     path=$(deppath "${line#///COMPILER=}")
     sha256="${line##*sha256=}"
+    sha256="${sha256%[^0-9a-fA-F]}"
     basename=$(basename "$path")
     target=work/lib/"${basename%-[0-9]*.jar}".jar
     if [ "$FORCE_DOWNLOAD" = "yes" ] || ! [ -e "$target" ]; then
@@ -57,7 +76,7 @@ do
       else
         (
          set -x
-         exec curl -fo "$target"~ "$REPO"/"$path"
+         download "$target"~ "$REPO"/"$path"
         )
       fi
       mv -f "$target"~ "$target"
@@ -68,7 +87,7 @@ do
       true
       ;;
     *)
-      echo "checksum mismatch!" >&2
+      echo "checksum mismatch: $target ($sha256)" >&2
       exit 2
     esac
     CP="$CP""$PATH_SEPARATOR"$(cygpath "$target")
@@ -76,21 +95,24 @@ do
   esac
 done < "$SRC"
 
-if ! [ work/kotlin_script.jar -nt "$SRC" ]; then
+CP="${CP#$PATH_SEPARATOR}"
+
+if ! [ "$DST" -nt "$SRC" ]; then
   (
     set -x
-    exec "$JAVA_HOME"/bin/java -cp work"$CP" \
+    exec "$JAVA_HOME"/bin/java \
+      -Djava.awt.headless=true \
+      -cp "$CP" \
       org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
       -kotlin-home work \
+      -no-reflect \
       -include-runtime \
-      -d work/kotlin_script.jar \
-      "$SRC"
+      -d "$DST" \
+      "$SRC" $INC
   )
 fi
 
 (
   set -x
-  exec "$JAVA_HOME"/bin/java -cp work/kotlin_script.jar kotlin_script \
-    --install \
-    "$SRC"
+  "$JAVA_HOME"/bin/java -jar "$DST"
 )

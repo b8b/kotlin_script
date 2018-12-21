@@ -8,13 +8,15 @@ import java.util.*
 private const val tagsUrl = "https://api.github.com/repos/Jetbrains/kotlin/tags"
 private val tagsRegex = """"name"\s*:\s*"v([0-9.]+)"""".toRegex()
 
+val currentVersion = object {
+    val v = javaClass.getResourceAsStream("kotlin_script.metadata").use { input ->
+        input.bufferedReader(Charsets.UTF_8).lineSequence().first { line ->
+            line.startsWith("///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:")
+        }.substring(47).substringBefore(':')
+    }
+}.v
+
 fun main() {
-    val currentVersion = Any::class.java
-        .getResourceAsStream("/kotlin_script.compiler.metadata").use { input ->
-            input.bufferedReader(Charsets.UTF_8).lineSequence().first { line ->
-                line.startsWith("///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:")
-            }.substring(47).substringBefore(':')
-        }
     println("getting tags from github")
     val json = URL(tagsUrl).openStream().use { input ->
         String(input.readBytes())
