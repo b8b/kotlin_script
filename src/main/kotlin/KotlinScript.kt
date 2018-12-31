@@ -1,7 +1,6 @@
 import java.io.*
 import java.net.URI
 import java.net.URL
-import java.net.URLClassLoader
 import java.nio.ByteBuffer
 import java.nio.file.*
 import java.nio.file.attribute.PosixFilePermission
@@ -161,7 +160,7 @@ object KotlinScript {
     }
 
     fun updateManifest(zipFile: File, mainClass: String, cp: List<String>) {
-        val env = mapOf<String, String>()
+        val env = mapOf<String, String>("create" to "false")
         val uri = URI.create("jar:" + zipFile.toURI())
         FileSystems.newFileSystem(uri, env).use { fs ->
             val nf = fs.getPath("META-INF/MANIFEST.MF")
@@ -412,42 +411,98 @@ object KotlinScript {
             return finalMetaData
         }
 
-        fun main(args: Array<String>) {
-            val metaData = if (
-                    cachedMetaData == null ||
-                    // check if script file changed
-                    cachedMetaData.mainScript.checksum != mainScript.checksum ||
-                    // check if include files changed
-                    cachedMetaData.inc.map { it.checksum } !=
-                    cachedMetaData.inc.map { resolveInc(it.path).checksum } ||
-                    // check if compiler changed
-                    (compilerMetaData != null && compilerMetaData.dep !=
-                            cachedMetaData.dep.filter { it.scope == Scope.Compiler })
-            ) {
-                compile()
-            } else {
-                cachedMetaData
+        fun compileIfOutOfDate() = if (
+                cachedMetaData == null ||
+                // check if script file changed
+                cachedMetaData.mainScript.checksum != mainScript.checksum ||
+                // check if include files changed
+                cachedMetaData.inc.map { it.checksum } !=
+                cachedMetaData.inc.map { resolveInc(it.path).checksum } ||
+                // check if compiler changed
+                (compilerMetaData != null && compilerMetaData.dep !=
+                        cachedMetaData.dep.filter { it.scope == Scope.Compiler })
+        ) {
+            compile()
+        } else {
+            cachedMetaData
+        }
+
+        fun deploy(target: String) {
+            val targetDir = File(target)
+            val libDir = File(targetDir, "lib")
+            val metaData = compileIfOutOfDate()
+            if (metaData.compilerExitCode != 0) {
+                metaData.compilerErrors.forEach(System.err::println)
+                System.exit(metaData.compilerExitCode)
             }
+            debug("--> installing dependencies")
+            val ddep = metaData.dep.filter { d ->
+                d.scope == Scope.Compile || d.scope == Scope.Runtime || (
+                        d.scope == Scope.Compiler &&
+                                d.id in listOf("kotlin-stdlib", "kotlin-reflect")
+
+                        )
+            }.map { d ->
+                val src = resolveLib(d)
+                val name = when (val ext = src.name.lastIndexOf('.')) {
+                    -1 -> src.name + "-" + d.sha256
+                    else -> src.name.substring(0, ext) + "-" + d.sha256 +
+                            src.name.substring(ext)
+                }
+                val tgt = File(libDir, name)
+                if (!tgt.exists()) {
+                    debug("  $name")
+                    Files.createDirectories(libDir.toPath())
+                    Files.copy(src.toPath(), tgt.toPath())
+                }
+                "lib/$name"
+            }
+
+            debug("--> installing main jar")
+            val scriptName = scriptFile.name
+            val outName = when (val ext = scriptName.lastIndexOf('.')) {
+                -1 -> "$scriptName.jar"
+                else -> scriptName.substring(0, ext) + ".jar"
+            }
+            val tgt = File(targetDir, "$outName~")
+            Files.copy(outFile.toPath(), tgt.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING)
+            updateManifest(tgt, metaData.main, ddep)
+            val permissions = PosixFilePermissions.asFileAttribute(setOf(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.GROUP_READ,
+                    PosixFilePermission.OTHERS_READ
+            ))
+            try {
+                Files.setPosixFilePermissions(tgt.toPath(), permissions.value())
+            } catch (_: UnsupportedOperationException) {
+            }
+            Files.move(tgt.toPath(), File(targetDir, outName).toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        fun main(args: Array<String>) {
+            val metaData = compileIfOutOfDate()
 
             if (metaData.compilerExitCode != 0) {
                 metaData.compilerErrors.forEach(System.err::println)
                 System.exit(metaData.compilerExitCode)
             }
 
-            if (compilerMetaData == null) {
-                TODO("forking not implemented")
-            }
-
-            val classPath = listOf(outFile) + metaData.dep
-                    .filter { d -> d.scope == Scope.Compile || d.scope == Scope.Runtime }
-                    .map { d -> resolveLib(d) }
-            val classLoader = URLClassLoader(classPath.map { it.toURI().toURL() }.toTypedArray())
-            val mainClass = classLoader.loadClass(metaData.main)
-            System.setProperty("kotlin_script.scriptFile.absolutePath", scriptFile.absolutePath)
-
-            mainClass
-                    .getDeclaredMethod("main", Array<String>::class.java)
-                    .invoke(null, args)
+            val javaExe = File(javaHome, "bin${File.separator}java")
+            val pb = ProcessBuilder(
+                    javaExe.absolutePath,
+                    "-Dkotlin_script.scriptFile.absolutePath=" +
+                            scriptFile.absolutePath,
+                    "-jar", outFile.absolutePath,
+                    *args
+            )
+            pb.inheritIO()
+            val p = pb.start()
+            val rc = p.waitFor()
+            System.exit(rc)
         }
     }
 
@@ -493,6 +548,11 @@ object KotlinScript {
                 outFile = outFile
         )
 
-        ks.main(args.sliceArray((scriptArg + 1) until args.size))
+        val deploy = flags["--deploy"]
+        if (deploy != null) {
+            ks.deploy(deploy)
+        } else {
+            ks.main(args.sliceArray((scriptArg + 1) until args.size))
+        }
     }
 }

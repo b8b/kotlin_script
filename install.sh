@@ -3,8 +3,8 @@
 : ${REPO:=https://repo1.maven.org/maven2}
 : ${FORCE_DOWNLOAD:=no}
 
-SRC=src/installer.kt
-INC=src/KotlinScript.kt
+SRC=src/main/kotlin/installer.kt
+INC=src/main/kotlin/KotlinScript.kt
 DST=work/kotlin_script_installer.jar
 
 set -e
@@ -87,7 +87,8 @@ do
       true
       ;;
     *)
-      echo "checksum mismatch: $target ($sha256)" >&2
+      echo "checksum mismatch: $target ($sha256):" >&2
+      echo "$CHK" >&2
       exit 2
     esac
     CP="$CP""$PATH_SEPARATOR"$(cygpath "$target")
@@ -97,7 +98,14 @@ done < "$SRC"
 
 CP="${CP#$PATH_SEPARATOR}"
 
-if ! [ "$DST" -nt "$SRC" ]; then
+OODATE=0
+for src in "$SRC" $INC; do
+  if ! [ "$DST" -nt "$src" ]; then
+    OODATE=1
+  fi
+done
+
+if [ "$OODATE" -eq 1 ]; then
   (
     set -x
     exec "$JAVA_HOME"/bin/java \

@@ -1,0 +1,12 @@
+pluginManagement {
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "kotlin-multiplatform") {
+                useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:${requested.version}")
+            }
+            if (requested.id.id == "maven-publish-auth") {
+                useModule("org.hibernate.build.gradle:gradle-maven-publish-auth:${requested.version}")
+            }
+        }
+    }
+}

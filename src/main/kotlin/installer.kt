@@ -17,10 +17,10 @@ val metaData = KotlinScript.MetaData(
         KotlinScript.Script("KotlinScript.kt"),
         emptyList(),
         """
-///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:1.3.10::sha256=9b9650550fac559f7db64d988123399ea3da7cb776bfb13b9a3ed818eef26969
-///COMPILER=org.jetbrains.kotlin:kotlin-reflect:1.3.10::sha256=764efe8190053c6916c7c9985cfeb722b4616a0bccdf4170768abd947efe2632
-///COMPILER=org.jetbrains.kotlin:kotlin-compiler:1.3.10::sha256=84d8d64c624790b52fd4890d5512d58b156aa076c7d8618576a875fc2ef8d540
-///COMPILER=org.jetbrains.kotlin:kotlin-script-runtime:1.3.10::sha256=e05a2cad07ff8b980c51a94ddb50cb5addfedd699f468853ca5c960192dd90ef
+///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:1.3.11::sha256=5ce7a979fe6a9b43d7e6c450061119717fce54bc50b49a130cfbd2c065e83fec
+///COMPILER=org.jetbrains.kotlin:kotlin-reflect:1.3.11::sha256=b8472ffb8319c8b53861effe6aa95b1521f1cfdaac3fc16033e35864f112496d
+///COMPILER=org.jetbrains.kotlin:kotlin-compiler:1.3.11::sha256=fa764e0514a4c2f12d8140a1992569e33175e068d2f6df4d5ae531d7f66a0954
+///COMPILER=org.jetbrains.kotlin:kotlin-script-runtime:1.3.11::sha256=e18b943373fc5cb8881f48ee1cbbe0ce2e9de01788dd35cef3e31b9793c335ae
 """.trimIndent().split('\n').map { line ->
             KotlinScript.parseDependency(line.removePrefix("///COMPILER="))
         }
