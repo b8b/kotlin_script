@@ -447,7 +447,7 @@ object KotlinScript {
                         d.scope == Scope.Compiler && d.id in
                                 listOf("kotlin-stdlib", "kotlin-reflect")
                         )
-            }.sortedBy { d -> "${d.id}-${d.version}${d.ext}" }. map { d ->
+            }.sortedBy { d -> "${d.id}-${d.version}${d.ext}" }.map { d ->
                 val src = resolveLib(d)
                 val name = when (val ext = src.name.lastIndexOf('.')) {
                     -1 -> src.name + "-" + d.sha256
@@ -455,12 +455,12 @@ object KotlinScript {
                             src.name.substring(ext)
                 }
                 while (exidx < existing.size) {
-                    val ex = existing[exidx++]
+                    val ex = existing[exidx]
+                    if (ex.fileName.toString() > name) break
+                    exidx++
                     if (ex.fileName.toString() < name) {
                         debug("- ${ex.fileName}")
                         Files.delete(ex)
-                    } else {
-                        break
                     }
                 }
                 val tgt = File(libDir, name)
