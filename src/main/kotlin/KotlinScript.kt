@@ -436,22 +436,36 @@ object KotlinScript {
                 System.exit(metaData.compilerExitCode)
             }
             debug("--> installing dependencies")
+            val existing = when {
+                libDir.exists() -> Files.newDirectoryStream(libDir.toPath())
+                        .sorted()
+                else -> emptyList()
+            }
+            var exidx = 0
             val ddep = metaData.dep.filter { d ->
                 d.scope == Scope.Compile || d.scope == Scope.Runtime || (
-                        d.scope == Scope.Compiler &&
-                                d.id in listOf("kotlin-stdlib", "kotlin-reflect")
-
+                        d.scope == Scope.Compiler && d.id in
+                                listOf("kotlin-stdlib", "kotlin-reflect")
                         )
-            }.map { d ->
+            }.sortedBy { d -> "${d.id}-${d.version}${d.ext}" }. map { d ->
                 val src = resolveLib(d)
                 val name = when (val ext = src.name.lastIndexOf('.')) {
                     -1 -> src.name + "-" + d.sha256
                     else -> src.name.substring(0, ext) + "-" + d.sha256 +
                             src.name.substring(ext)
                 }
+                while (exidx < existing.size) {
+                    val ex = existing[exidx++]
+                    if (ex.fileName.toString() < name) {
+                        debug("- ${ex.fileName}")
+                        Files.delete(ex)
+                    } else {
+                        break
+                    }
+                }
                 val tgt = File(libDir, name)
                 if (!tgt.exists()) {
-                    debug("  $name")
+                    debug("+ $name")
                     Files.createDirectories(libDir.toPath())
                     Files.copy(src.toPath(), tgt.toPath())
                 }
