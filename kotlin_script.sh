@@ -1,12 +1,12 @@
 : ${ks_home:="$HOME/.kotlin_script"}
 : ${java_cmd:="java"}
-: ${sha256_cmd:="openssl dgst -sha256 -hex"}
+: ${sha256_cmd:="openssl dgst -sha256 -r"}
 : ${script_file:="$0"}
 
 script_dir="$(dirname "$script_file")"
 script_name="$(basename "$script_file")"
 script_sha256="$(${sha256_cmd} < "$script_file")"
-script_sha256="${script_sha256##* }"
+script_sha256="${script_sha256%% *}"
 script_sha_hi="${script_sha256%??????????????????????????????????????????????????????????????}"
 script_sha_lo="${script_sha256#??}"
 script_cache_dir="$ks_home"/cache/"$script_sha_hi"
@@ -31,9 +31,9 @@ parse_script_metadata()
       return
     fi
   fi
-  chk="SHA256($script_name)= ${script_sha256}"$'\n'"$chk"
+  chk="$script_sha256 *$script_name"$'\n'"$chk"
   local target_sha256="$(echo "$chk" | ${sha256_cmd})"
-  target_sha256="${target_sha256##* }"
+  target_sha256="${target_sha256%% *}"
   local target_sha_hi="${target_sha256%??????????????????????????????????????????????????????????????}"
   local target_sha_lo="${target_sha256#??}"
   local target_cache="$ks_home"/cache/"$target_sha_hi"/"$target_sha_lo"
@@ -77,7 +77,7 @@ do_fetch()
   while true; do
     if [ -e "$dest"~ ]; then
       case "$(${sha256_cmd} < "$dest"~)" in
-      *"$sha256"*)
+      "$sha256 "*)
         mv -f "$dest"~ "$dest"
         return
         ;;
@@ -151,15 +151,15 @@ parse_compiler_metadata()
         script_sha_lo="${script_sha256#??}"
         script_cache_dir="$ks_home"/cache/"$script_sha_hi"
         script_cache="$script_cache_dir"/"$script_sha_lo"
-        chk="${chk}SHA256($script_name)= $sha256"$'\n'
+        chk="${chk}$sha256 *$script_name"$'\n'
       else
-        chk="${chk}SHA256($inc)= $sha256"$'\n'
+        chk="${chk}$sha256 *$inc"$'\n'
       fi
       ;;
     esac
   done < "$1"
   local target_sha256="$(echo "$chk" | ${sha256_cmd})"
-  target_sha256="${target_sha256##* }"
+  target_sha256="${target_sha256%% *}"
   local target_sha_hi="${target_sha256%??????????????????????????????????????????????????????????????}"
   local target_sha_lo="${target_sha256#??}"
   target_dir="$ks_home"/cache/"$target_sha_hi"
