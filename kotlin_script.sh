@@ -21,7 +21,7 @@ parse_script_metadata()
     case "$line" in
     '///INC='*)
       local inc="${line#///INC=}"
-      set -- "$inc" "$@"
+      set -- "$@" "$inc"
       ;;
     esac
   done < "$script_cache".metadata
