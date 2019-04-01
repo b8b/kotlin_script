@@ -50,14 +50,9 @@ if ! which "$java_cmd" >/dev/null 2>&1; then
   exit 1
 fi
 
-exec_script()
-{
+if [ -e "$target" ]; then
   exec ${java_cmd} -jar "$target" "$@"
   exit 2
-}
-
-if [ -e "$target" ]; then
-  exec_script
 fi
 
 : ${repo:="https://repo1.maven.org/maven2"}
@@ -189,5 +184,5 @@ if ! mv -f "$tmpfile".jar "$target"; then
   exit 1
 fi
 
-exec_script
+exec ${java_cmd} -jar "$target" "$@"
 exit 2
