@@ -193,12 +193,20 @@ class KotlinScript(
 
     companion object {
 
+        private fun findJavaHome(): File {
+            val javaHome = File(System.getProperty("java.home"))
+            return if (javaHome.path.endsWith("${File.separator}jre") &&
+                    File(javaHome, "../lib/tools.jar").exists()) {
+                // detected jdk
+                File(javaHome.path.removeSuffix("${File.separator}jre"))
+            } else {
+                javaHome
+            }
+        }
+
         @JvmStatic
         fun main(args: Array<String>) {
-            val javaHome = File(
-                    System.getProperty("java.home")
-                            .removeSuffix("${File.separator}jre")
-            )
+            val javaHome = findJavaHome()
             val userHome = File(System.getProperty("user.home")
                     ?: error("user.home system property not set"))
             val kotlinScriptHome = System.getProperty("kotlin_script.home")
