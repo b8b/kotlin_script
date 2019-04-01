@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.11.0
+v=1.3.21.0
 artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
 if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
   : ${repo:=https://repo1.maven.org/maven2}
@@ -23,8 +23,8 @@ if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
     echo "error: failed to fetch kotlin_script" >&2
     exit 1
   fi
-  case "$(openssl dgst -sha256 -hex < "$local_repo"/"$artifact"~)" in
-  *90ba683ba3819c6274e5fdb25513bc526bf8aba3d54736dee3bf0d1b7ac00a07*)
+  case "$(openssl dgst -sha256 -r < "$local_repo"/"$artifact"~)" in
+  "82dfd24da8e2cb725a548c9ef294fdf1ac5b5a6d209d9c00c42a241e7017e587 "*)
     mv -f "$local_repo"/"$artifact"~ "$local_repo"/"$artifact" ;;
   *)
     echo "error: failed to validate kotlin_script" >&2
