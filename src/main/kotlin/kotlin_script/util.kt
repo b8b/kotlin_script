@@ -26,10 +26,14 @@ fun updateManifest(zipFile: File, mainClass: String, cp: List<String>) {
             Manifest()
         }
         manifest.mainAttributes.apply {
-            putIfAbsent(Attributes.Name.MANIFEST_VERSION, "1.0")
-            put(Attributes.Name.MAIN_CLASS, mainClass)
-            if (cp.isNotEmpty()) {
-                put(Attributes.Name.CLASS_PATH, cp.joinToString(" "))
+            Attributes.Name.MANIFEST_VERSION.let { key ->
+                if (!contains(key)) put(key, "1.0")
+            }
+            Attributes.Name.MAIN_CLASS.let { key ->
+                put(key, mainClass)
+            }
+            Attributes.Name.CLASS_PATH.let { key ->
+                if (cp.isNotEmpty()) put(key, cp.joinToString(" "))
             }
         }
         Files.createDirectories(nf.parent)

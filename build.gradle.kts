@@ -17,8 +17,8 @@ group = "org.cikit.kotlin_script"
 version = "1.3.21.0"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_6
-    targetCompatibility = JavaVersion.VERSION_1_6
+    sourceCompatibility = JavaVersion.VERSION_1_7
+    targetCompatibility = JavaVersion.VERSION_1_7
 }
 
 repositories {
@@ -35,6 +35,7 @@ dependencies {
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
+    jdkHome = properties["jdk.home"]?.toString()?.takeIf { it != "unspecified" }
     jvmTarget = "1.6"
 }
 
