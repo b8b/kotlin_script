@@ -11,8 +11,6 @@ import java.util.jar.Manifest
 
 const val manifestPath = "META-INF/MANIFEST.MF"
 
-fun debug(msg: String) = System.console()?.printf("%s\n", msg)
-
 fun updateManifest(zipFile: File, mainClass: String, cp: List<String>) {
     val env = mapOf("create" to "false")
     val uri = URI.create("jar:" + zipFile.toURI())

@@ -19,7 +19,8 @@ class KotlinScript(
         val kotlinScriptHome: File,
         val mavenRepoUrl: String,
         val mavenRepoCache: File?,
-        val localRepo: File
+        val localRepo: File,
+        val trace: Boolean
 ) {
     private val manifest = javaClass.classLoader
             .getResources(manifestPath)
@@ -133,7 +134,6 @@ class KotlinScript(
         } catch (ex: FileAlreadyExistsException) {
             Files.setPosixFilePermissions(tmpJarFile.toPath(), permissions.value())
         }
-        debug("--> recompiling script")
         val scriptClassPathArgs = when {
             scriptClassPath.isEmpty() -> emptyList()
             else -> listOf(
@@ -152,7 +152,7 @@ class KotlinScript(
                 scriptFile.absolutePath,
                 *incArgs.toTypedArray()
         )
-        debug("+ ${compilerArgs.joinToString(" ")}")
+        if (trace) println("+ ${compilerArgs.joinToString(" ")}")
         val compilerProcess = ProcessBuilder(*compilerArgs.toTypedArray())
                 .redirectErrorStream(true)
                 .start()
@@ -219,14 +219,6 @@ class KotlinScript(
                     ?: "https://repo1.maven.org/maven2"
             val mavenRepoCache = System.getProperty("maven.repo.cache")?.let(::File)
 
-            val ks = KotlinScript(
-                    javaHome = javaHome,
-                    kotlinScriptHome = kotlinScriptHome,
-                    mavenRepoUrl = mavenRepoUrl,
-                    mavenRepoCache = mavenRepoCache,
-                    localRepo = localRepo
-            )
-
             val flags = mutableMapOf<String, String?>()
             var k = 0
             while (k < args.size) {
@@ -234,12 +226,22 @@ class KotlinScript(
                 if (!key.startsWith("-")) break
                 k++
                 val v = when (key) {
-                    "-d", "-M" -> args.getOrNull(k)
+                    "-c", "-d", "-M" -> args.getOrNull(k).also { k++ }
+                    "-version", "-x" -> "yes"
                     else -> error("unknown option: $k")
                 }
                 flags[key] = v
-                if (v != null) k++
             }
+
+            val ks = KotlinScript(
+                    javaHome = javaHome,
+                    kotlinScriptHome = kotlinScriptHome,
+                    mavenRepoUrl = mavenRepoUrl,
+                    mavenRepoCache = mavenRepoCache,
+                    localRepo = localRepo,
+                    trace = flags["-x"] == "yes"
+            )
+
             val scriptFileName = args.getOrNull(k)
                     ?: error("missing script path")
 
