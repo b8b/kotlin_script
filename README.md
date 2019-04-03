@@ -47,8 +47,6 @@ Some shell variables can be customized in the embedded installer.
 
 The meta data format within the source files is currently rather simple. 
 
-The only required information is the main class name:
-
 ```
 ///MAIN=some.package.MainClassName
 
@@ -77,7 +75,7 @@ format.
 * Split code into separate "up-to-date check" and compiler (done)
 * Implement up-to-date check in C for reasonable startup times (done in sh)
 * Automatic upgrade
-* Use a reasonable default for `///MAIN=`
+* Use a reasonable default for `///MAIN=` (done)
 * Support compiling snippets from STDIN or command line arguments
 * Use annotations for meta data in source files
 * Implement dependency isolation mode

@@ -94,8 +94,16 @@ fun parseMetaData(scriptFile: File): MetaData {
         } ?: emptyList()
     }
     return MetaData(
-            metaDataMap["MAIN"]?.singleOrNull()
-                    ?: throw IllegalArgumentException("missing MAIN in meta data"),
+            metaDataMap["MAIN"]?.singleOrNull() ?: scriptFile.name?.let { name ->
+                if (name.length > 3 && name.endsWith(".kt")) {
+                    val trimmed = name.trim().removeSuffix(".kt")
+                    trimmed.first().toUpperCase() +
+                            trimmed.substring(1) +
+                            "Kt"
+                } else {
+                    null
+                }
+            } ?: throw IllegalArgumentException("missing MAIN in meta data"),
             mainScript = mainScript,
             inc = scripts ?: emptyList(),
             dep = dep,
