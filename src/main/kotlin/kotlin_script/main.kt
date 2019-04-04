@@ -152,7 +152,7 @@ class KotlinScript(
                 scriptFile.absolutePath,
                 *incArgs.toTypedArray()
         )
-        if (trace) println("+ ${compilerArgs.joinToString(" ")}")
+        if (trace) println("++ ${compilerArgs.joinToString(" ")}")
         val compilerProcess = ProcessBuilder(*compilerArgs.toTypedArray())
                 .redirectErrorStream(true)
                 .start()
