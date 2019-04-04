@@ -41,6 +41,11 @@ if [ -e "$script_cache".metadata ]; then
   fi
 fi
 
+: ${repo:="https://repo1.maven.org/maven2"}
+: ${local_repo:="$HOME/.m2/repository"}
+
+fetch_s="$(command -v fetch) -aAq" || fetch_s="$(command -v curl) -fSs"
+
 do_fetch()
 {
   dest="$1"
@@ -63,23 +68,16 @@ do_fetch()
       break
     fi
     retry=$(($retry - 1))
-    if ! ${fetch_cmd} "$repo"/"$artifact" >"$dest"~1 2>"$dest"~2; then
-      cat "$dest"~2 >&2
-      rm -f "$dest"~2
+    if ! ${fetch_cmd:="$fetch_s"} "$dest"~ "$repo"/"$artifact"; then
       echo "error: failed to fetch $repo/$artifact" >&2
       exit 1
     fi
-    rm -f "$dest"~2
   done
   echo "error: failed to validate $dest~1" >&2
   exit 1
 }
 
 if ! [ -e "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar ]; then
-  : ${repo:="https://repo1.maven.org/maven2"}
-  : ${local_repo:="$HOME/.m2/repository"}
-  : ${fetch_cmd:="$(command -v fetch || command -v curl) -o-"}
-
   mkdir -p "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar
   do_fetch "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar \
            org/jetbrains/kotlin/kotlin-stdlib/"@stdlib_ver@"/kotlin-stdlib-"@stdlib_ver@".jar \
@@ -87,10 +85,6 @@ if ! [ -e "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.ja
 fi
 
 if ! [ -e "$ks_home"/kotlin_script-"@ks_jar_ver@".jar ]; then
-  : ${repo:="https://repo1.maven.org/maven2"}
-  : ${local_repo:="$HOME/.m2/repository"}
-  : ${fetch_cmd:="$(command -v fetch || command -v curl) -o-"}
-
   do_fetch "$ks_home"/kotlin_script-"@ks_jar_ver@".jar \
            org/cikit/kotlin_script/kotlin_script/"@ks_jar_ver@"/kotlin_script-"@ks_jar_ver@".jar \
            "@ks_jar_sha256@"
