@@ -44,7 +44,7 @@ fi
 : ${repo:="https://repo1.maven.org/maven2"}
 : ${local_repo:="$HOME/.m2/repository"}
 
-fetch_s="$(command -v fetch) -aAq" || fetch_s="$(command -v curl) -fSs"
+fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
 
 do_fetch()
 {
@@ -53,13 +53,18 @@ do_fetch()
   sha256="$3"
   retry=1
   if [ -e "$local_repo"/"$artifact" ]; then
-    cp -f "$local_repo"/"$artifact" "$dest"~1
+    cp -f "$local_repo"/"$artifact" "$dest"~
   fi
   while true; do
-    if [ -e "$dest"~1 ]; then
-      case "$(${sha256_cmd} < "$dest"~1)" in
+    if [ -e "$dest"~ ]; then
+      case "$(${sha256_cmd} < "$dest"~)" in
       "$sha256 "*)
-        mv -f "$dest"~1 "$dest"
+        mv -f "$dest"~ "$dest"
+        # also copy to local_repo
+        if ! [ -e "$local_repo"/"$artifact" ]; then
+          mkdir -p "$(dirname "$local_repo"/"$artifact")" && \
+            cp "$dest" "$local_repo"/"$artifact"
+        fi
         return
         ;;
       esac
@@ -73,12 +78,12 @@ do_fetch()
       exit 1
     fi
   done
-  echo "error: failed to validate $dest~1" >&2
+  echo "error: failed to validate $dest~" >&2
   exit 1
 }
 
 if ! [ -e "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar ]; then
-  mkdir -p "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar
+  mkdir -p "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib
   do_fetch "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar \
            org/jetbrains/kotlin/kotlin-stdlib/"@stdlib_ver@"/kotlin-stdlib-"@stdlib_ver@".jar \
            "@stdlib_sha256@"
