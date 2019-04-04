@@ -95,9 +95,9 @@ if ! [ -e "$ks_home"/kotlin_script-"@ks_jar_ver@".jar ]; then
            "@ks_jar_sha256@"
 fi
 
-mkdir -p "$ks_home"/cache/work
+mkdir -p "$ks_home"/cache-@ks_jar_ver@/work
 
-if ! tmpfile="$(mktemp "$ks_home"/cache/work/XXXXXXXXXXXXXXXX)"; then
+if ! tmpfile="$(mktemp "$ks_home"/cache-@ks_jar_ver@/work/XXXXXXXXXXXXXXXX)"; then
   exit 1
 fi
 
