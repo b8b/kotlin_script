@@ -17,7 +17,7 @@ You can easily install any version of `kotlin_script` (linked with any
 ## Usage
 
 This version of `kotlin_script` is used by embedding
- an installer shell script snipped directly into your script file. 
+ an installer shell script snippet directly into your script file. 
 
 Also, the script file has to be a regular kotlin source file with
 additional meta data and a main function/method (no kts support for now).
@@ -74,8 +74,8 @@ format.
 
 * Split code into separate "up-to-date check" and compiler (done)
 * Implement up-to-date check in C for reasonable startup times (done in sh)
-* Automatic upgrade
 * Use a reasonable default for `///MAIN=` (done)
+* Automatic upgrade
 * Support compiling snippets from STDIN or command line arguments
 * Use annotations for meta data in source files
 * Implement dependency isolation mode

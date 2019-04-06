@@ -1,18 +1,18 @@
 package kotlin_script
 
 import java.io.File
-import java.io.FileOutputStream
 import java.net.URL
-import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.jar.Manifest
 import java.util.zip.ZipOutputStream
 
-private const val kotlinCompilerMain = "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
+private const val kotlinCompilerMain =
+        "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
 
 class KotlinScript(
         val javaHome: File,
@@ -53,32 +53,42 @@ class KotlinScript(
         }
         val f = File(localRepo, subPath)
         if (f.exists()) return f
-        val tmp = File(f.absolutePath + "~")
-        val md = MessageDigest.getInstance("SHA-256")
-        Files.createDirectories(tmp.parentFile.toPath())
-        FileOutputStream(tmp).use { out ->
-            URL("$mavenRepoUrl/$subPath").openStream().use { `in` ->
-                val buffer = ByteArray(1024 * 4)
-                while (true) {
-                    val n = `in`.read(buffer)
-                    if (n < 0) break
-                    md.update(buffer, 0, n)
-                    out.write(buffer, 0, n)
+        Files.createDirectories(f.toPath().parent)
+        val tmp = Files.createTempFile(
+                f.toPath().parent,
+                f.name + "~",
+                "")
+        try {
+            if (trace) println("++ fetch $mavenRepoUrl/$subPath")
+            val md = MessageDigest.getInstance("SHA-256")
+            Files.newOutputStream(tmp, StandardOpenOption.WRITE).use { out ->
+                URL("$mavenRepoUrl/$subPath").openStream().use { `in` ->
+                    val buffer = ByteArray(1024 * 4)
+                    while (true) {
+                        val n = `in`.read(buffer)
+                        if (n < 0) break
+                        md.update(buffer, 0, n)
+                        out.write(buffer, 0, n)
+                    }
                 }
             }
+            val sha256 = md.digest().joinToString("") {
+                String.format("%02x", it)
+            }
+            if (dep.sha256 != null && dep.sha256 != sha256) {
+                error("unexpected sha256=$sha256 for $dep")
+            }
+            Files.move(
+                    tmp, f.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch(_: Throwable) {
+            try {
+                Files.delete(tmp)
+            } catch (_: java.nio.file.NoSuchFileException) {
+            }
         }
-        val sha256 = md.digest().joinToString("") {
-            String.format("%02x", it)
-        }
-        if (dep.sha256 != null && dep.sha256 != sha256) {
-            Files.delete(tmp.toPath())
-            error("unexpected sha256=$sha256 for $dep")
-        }
-        Files.move(
-                tmp.toPath(), f.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
-        )
         return f
     }
 
@@ -122,17 +132,16 @@ class KotlinScript(
         val scriptClassPath = (rtDeps + metaData.dep.filter { d ->
             d.scope in listOf(Scope.Compile, Scope.CompileOnly)
         }).map { d -> resolveLib(d) }
-        val tmpJarFile = File("${outFile.absolutePath.removeSuffix(".jar")}~.jar")
-        Files.createDirectories(tmpJarFile.parentFile.toPath())
+        Files.createDirectories(outFile.parentFile.toPath())
         val permissions = PosixFilePermissions.asFileAttribute(setOf(
                 PosixFilePermission.OWNER_READ,
                 PosixFilePermission.OWNER_WRITE
         ))
         try {
-            Files.createFile(tmpJarFile.toPath(), permissions)
+            Files.createFile(outFile.toPath(), permissions)
         } catch (_: UnsupportedOperationException) {
         } catch (ex: FileAlreadyExistsException) {
-            Files.setPosixFilePermissions(tmpJarFile.toPath(), permissions.value())
+            Files.setPosixFilePermissions(outFile.toPath(), permissions.value())
         }
         val scriptClassPathArgs = when {
             scriptClassPath.isEmpty() -> emptyList()
@@ -148,7 +157,7 @@ class KotlinScript(
         val compilerArgs: List<String> = listOf(
                 *kotlinCompilerArgs(compilerClassPath),
                 *scriptClassPathArgs.toTypedArray(),
-                "-d", tmpJarFile.absolutePath,
+                "-d", outFile.toString(),
                 scriptFile.absolutePath,
                 *incArgs.toTypedArray()
         )
@@ -157,7 +166,9 @@ class KotlinScript(
                 .redirectErrorStream(true)
                 .start()
         compilerProcess.outputStream.close()
-        val compilerErrors = String(compilerProcess.inputStream.readBytes())
+        val compilerErrors = compilerProcess.inputStream.use { `in` ->
+            String(`in`.readBytes())
+        }
         val rc = compilerProcess.waitFor()
         val finalMetaData = metaData.copy(
                 dep = if (compilerDepsOverride.isEmpty()) {
@@ -169,25 +180,26 @@ class KotlinScript(
                 compilerErrors = compilerErrors.split("\n")
         )
         if (rc != 0) {
-            FileOutputStream(tmpJarFile).use { out ->
+            // create empty zip file
+            Files.newOutputStream(outFile.toPath(),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING).use { out ->
                 ZipOutputStream(out).close()
             }
         }
-        finalMetaData.storeToZipFile(tmpJarFile, "kotlin_script.metadata")
-        updateManifest(tmpJarFile,
+        finalMetaData.storeToZipFile(
+                outFile,
+                "kotlin_script.metadata")
+        updateManifest(outFile,
                 mainClass = finalMetaData.main,
                 cp = (rtDeps + finalMetaData.dep.filter {
                     it.scope in listOf(Scope.Compile, Scope.Runtime)
                 }).map {
-                    outFile.parentFile.absoluteFile.toPath().relativize(
-                            resolveLib(it).toPath()
-                    ).joinToString("/")
+                    val libFile = resolveLib(it)
+                    outFile.toPath().toAbsolutePath().parent
+                            .relativize(libFile.toPath().toAbsolutePath())
+                            .joinToString("/")
                 })
-        Files.move(
-                tmpJarFile.toPath(), outFile.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
-        )
         return finalMetaData
     }
 
@@ -217,7 +229,8 @@ class KotlinScript(
                     ?: File(userHome, ".m2${File.separator}repository")
             val mavenRepoUrl = System.getProperty("maven.repo.url")
                     ?: "https://repo1.maven.org/maven2"
-            val mavenRepoCache = System.getProperty("maven.repo.cache")?.let(::File)
+            val mavenRepoCache = System.getProperty("maven.repo.cache")
+                    ?.let(::File)
 
             val flags = mutableMapOf<String, String?>()
             var k = 0
