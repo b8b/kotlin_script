@@ -116,6 +116,7 @@ class Tests {
     }
 
     private fun setupScripts(baseDir: File, v: String, kotlinScript: Script) {
+        Files.createDirectories(baseDir.toPath())
         FileWriter(File(baseDir, "inc.kt")).use { w ->
             w.write("fun myFunc() = 1\n")
         }
