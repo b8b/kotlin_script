@@ -83,11 +83,12 @@ class KotlinScript(
                     StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING
             )
-        } catch(_: Throwable) {
+        } catch(ex: Throwable) {
             try {
                 Files.delete(tmp)
             } catch (_: java.nio.file.NoSuchFileException) {
             }
+            throw ex
         }
         return f
     }
