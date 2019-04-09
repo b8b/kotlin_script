@@ -12,7 +12,7 @@ md_cache="$md_cache_dir"/"${script_sha256#??}".metadata
 
 parse_script_metadata()
 {
-  while read line; do
+  while read -r line; do
     case "$line" in
     '///INC='*)
       set -- "$@" "${line#///INC=}"
@@ -155,7 +155,7 @@ fi
 
 chk=
 inc=
-while read line; do
+while read -r line; do
   case "$line" in
   '///INC='*)
     inc="${line#///INC=}"
