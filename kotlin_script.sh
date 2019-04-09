@@ -46,12 +46,11 @@ fi
 : ${repo:="https://repo1.maven.org/maven2"}
 : ${local_repo:="$HOME/.m2/repository"}
 
-if [ x"$fetch_cmd" = x ] && \
-    ! fetch_s="$(command -v fetch) -aAqo" && \
-    ! fetch_s="$(command -v curl) -fSso"; then
-  fetch_cmd=""
-else
-  fetch_cmd="$fetch_s"
+if [ x"${fetch_cmd:=}" = x ]; then
+  if fetch_s="$(command -v fetch) -aAqo" || \
+     fetch_s="$(command -v curl) -fSso"; then
+    fetch_cmd="$fetch_s"
+  fi
 fi
 
 do_fetch()
