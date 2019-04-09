@@ -23,6 +23,7 @@ data class Dependency(
         val sha256: String? = null,
         val scope: Scope = Scope.Compile
 ) {
+
     fun toSpec(): String = "$groupId:$artifactId:$version" + when (classifier) {
         null -> ""
         else -> ":$classifier"
@@ -33,6 +34,15 @@ data class Dependency(
         null -> ""
         else -> ":sha256=$sha256"
     }
+
+    val subPath: String
+        get() = groupId.replace(".", "/") + "/" +
+                artifactId + "/" + version + "/" +
+                "${artifactId}-${version}" + when (classifier) {
+            null -> ""
+            else -> "-${classifier}"
+        } + ".${type}"
+
 }
 
 fun parseDependency(spec: String): Dependency {
@@ -43,14 +53,14 @@ fun parseDependency(spec: String): Dependency {
     val artifactId = parts[1]
     var type = "jar"
     val version = when (val i = parts[2].indexOf('@')) {
-        in 0 .. Integer.MAX_VALUE -> parts[2].substring(0, i).also {
+        in 0..Integer.MAX_VALUE -> parts[2].substring(0, i).also {
             type = parts[2].substring(i + 1)
         }
         else -> parts[2]
     }
     val classifier = when (val i = parts.getOrNull(3)?.indexOf('@')) {
         null -> ""
-        in 0 .. Integer.MAX_VALUE -> parts[3].substring(0, i).also {
+        in 0..Integer.MAX_VALUE -> parts[3].substring(0, i).also {
             type = parts[3].substring(i + 1)
         }
         else -> parts[3]

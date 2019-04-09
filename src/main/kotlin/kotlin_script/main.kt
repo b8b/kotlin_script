@@ -41,12 +41,7 @@ class KotlinScript(
             ?: error("no compiler classpath in manifest")
 
     private fun resolveLib(dep: Dependency): File {
-        val subPath = dep.groupId.replace(".", "/") + "/" +
-                dep.artifactId + "/" + dep.version + "/" +
-                "${dep.artifactId}-${dep.version}" + when (dep.classifier) {
-            null -> ""
-            else -> "-${dep.classifier}"
-        } + ".${dep.type}"
+        val subPath = dep.subPath
         if (mavenRepoCache != null) {
             val f = File(mavenRepoCache, subPath)
             if (f.exists()) return f

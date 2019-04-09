@@ -27,6 +27,7 @@ repositories {
 
 dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib")
+    testCompile("junit:junit:4.12")
     testCompile("com.pi4j:pi4j-core:1.1")
     testCompile("org.apache.sshd:sshd-netty:2.1.0")
     testCompile("io.vertx:vertx-core:3.6.0")
