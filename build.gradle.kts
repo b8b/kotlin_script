@@ -44,6 +44,8 @@ val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
     jvmTarget = "1.6"
 }
+compileTestKotlin.dependsOn.add("jar")
+compileTestKotlin.dependsOn.add("buildKotlinScriptSh")
 
 val main by sourceSets
 
