@@ -1,8 +1,6 @@
 import kotlin_script.parseDependency
-import org.junit.AfterClass
-import org.junit.Before
-import org.junit.BeforeClass
-import org.junit.Test
+import org.junit.*
+import org.junit.runners.MethodSorters
 import java.io.*
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
@@ -12,6 +10,7 @@ import java.security.MessageDigest
 import java.util.jar.Manifest
 import java.util.zip.ZipInputStream
 
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class ZshTests {
 
     companion object {
@@ -310,7 +309,7 @@ class ZshTests {
     }
 
     @Test
-    fun testFromScratch() {
+    fun test1FromScratch() {
         setup()
         compileOk()
     }
