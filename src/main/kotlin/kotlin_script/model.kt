@@ -7,9 +7,7 @@ import java.io.FileNotFoundException
 import java.security.MessageDigest
 
 enum class Scope {
-    Compiler,
-    CompilerPlugin,
-    CompileOnly,
+    Plugin,
     Compile,
     Runtime
 }

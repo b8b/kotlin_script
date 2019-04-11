@@ -9,7 +9,6 @@ import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.jar.Manifest
-import java.util.zip.ZipOutputStream
 
 private const val kotlinCompilerMain =
         "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
@@ -37,7 +36,7 @@ class KotlinScript(
 
     private val compilerClassPath = manifest["Kotlin-Compiler-Class-Path"]
             ?.split(' ')
-            ?.map { spec -> parseDependency(spec).copy(scope = Scope.Compiler) }
+            ?.map { spec -> parseDependency(spec).copy(scope = Scope.Runtime) }
             ?: error("no compiler classpath in manifest")
 
     private fun resolveLib(dep: Dependency): File {
@@ -88,31 +87,32 @@ class KotlinScript(
         return f
     }
 
-    private fun kotlinCompilerArgs(compilerDeps: List<Dependency>): Array<String> {
-        val kotlinVersions = compilerDeps.map { d ->
+    private fun kotlinCompilerArgs(): Array<String> {
+        val kotlinVersions = compilerClassPath.map { d ->
             if (d.groupId == "org.jetbrains.kotlin" &&
                     d.artifactId == "kotlin-stdlib") {
                 d.version.trim()
             } else ""
         }.toSet()
-        val kotlinVersion = kotlinVersions.filterNot { it.isEmpty() }.singleOrNull()
+        val kotlinVersion = kotlinVersions.singleOrNull(String::isNotEmpty)
                 ?: error("conflicting kotlin versions in compiler dependencies")
         val tmpKotlinHome = File(kotlinScriptHome,
-                "kotlin-compiler-$kotlinVersion${File.separator}kotlinc")
+                "kotlin-compiler-$kotlinVersion/kotlinc")
         Files.createDirectories(File(tmpKotlinHome, "lib").toPath())
-        val compilerClassPath = compilerDeps.joinToString(File.pathSeparator) { d ->
+        val cp = compilerClassPath.joinToString(File.pathSeparator) { d ->
             val f = resolveLib(d)
-            val copy = File(tmpKotlinHome, "lib${File.separator}${d.artifactId}.${d.type}")
+            val copy = File(tmpKotlinHome, "lib/${d.artifactId}.${d.type}")
             if (!copy.exists()) {
-                Files.copy(f.toPath(), copy.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                Files.copy(f.toPath(), copy.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING)
             }
             //TODO use correct quoting
             copy.absolutePath
         }
         return arrayOf(
-                File(javaHome, "bin${File.separator}java").absolutePath,
+                File(javaHome, "bin/java").absolutePath,
                 "-Djava.awt.headless=true",
-                "-cp", compilerClassPath,
+                "-cp", cp,
                 kotlinCompilerMain,
                 "-kotlin-home", tmpKotlinHome.absolutePath
         )
@@ -121,12 +121,11 @@ class KotlinScript(
     fun compile(scriptFile: File, outFile: File): MetaData {
         val metaData = parseMetaData(scriptFile)
 
-        val compilerDepsOverride = metaData.dep.filter { it.scope == Scope.Compiler }
-        val rtDeps = compilerClassPath.filter {
+        val runtimeClassPath = compilerClassPath.filter {
             it.artifactId in listOf("kotlin-stdlib", "kotlin-reflect")
         }
-        val scriptClassPath = (rtDeps + metaData.dep.filter { d ->
-            d.scope in listOf(Scope.Compile, Scope.CompileOnly)
+        val compileClassPath = (runtimeClassPath + metaData.dep.filter { d ->
+            d.scope == Scope.Compile
         }).map { d -> resolveLib(d) }
         Files.createDirectories(outFile.parentFile.toPath())
         val permissions = PosixFilePermissions.asFileAttribute(setOf(
@@ -139,20 +138,21 @@ class KotlinScript(
         } catch (ex: FileAlreadyExistsException) {
             Files.setPosixFilePermissions(outFile.toPath(), permissions.value())
         }
-        val scriptClassPathArgs = when {
-            scriptClassPath.isEmpty() -> emptyList()
+        val compileClassPathArgs = when {
+            compileClassPath.isEmpty() -> emptyList()
             else -> listOf(
-                    "-cp", scriptClassPath.joinToString(File.pathSeparator)
+                    "-cp", compileClassPath.joinToString(File.pathSeparator)
             )
         }
         // TODO cached scripts should be used for compilation
-        // --> use a temp dir for compilation and also attach script sources to jar
+        // --> use a temp dir for compilation and also attach script
+        //     sources to jar (or it is possible with embedded compiler?)
         val incArgs = metaData.inc.map { inc ->
             File(scriptFile.parentFile, inc.path).path
         }
         val compilerArgs: List<String> = listOf(
-                *kotlinCompilerArgs(compilerClassPath),
-                *scriptClassPathArgs.toTypedArray(),
+                *kotlinCompilerArgs(),
+                *compileClassPathArgs.toTypedArray(),
                 "-d", outFile.toString(),
                 scriptFile.absolutePath,
                 *incArgs.toTypedArray()
@@ -167,35 +167,31 @@ class KotlinScript(
         }
         val rc = compilerProcess.waitFor()
         val finalMetaData = metaData.copy(
-                dep = if (compilerDepsOverride.isEmpty()) {
-                    compilerClassPath + metaData.dep
-                } else {
-                    metaData.dep
-                },
+                dep = metaData.dep,
                 compilerExitCode = rc,
                 compilerErrors = compilerErrors.split("\n")
         )
         if (rc != 0) {
-            // create empty zip file
-            Files.newOutputStream(outFile.toPath(),
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING).use { out ->
-                ZipOutputStream(out).close()
+            // remove output file
+            try {
+                Files.delete(outFile.toPath())
+            } catch (_: java.nio.file.NoSuchFileException) {
             }
+        } else {
+            finalMetaData.storeToZipFile(
+                    outFile,
+                    "kotlin_script.metadata")
+            updateManifest(outFile,
+                    mainClass = finalMetaData.main,
+                    cp = (runtimeClassPath + finalMetaData.dep.filter {
+                        it.scope in listOf(Scope.Compile, Scope.Runtime)
+                    }).map {
+                        val libFile = resolveLib(it)
+                        outFile.toPath().toAbsolutePath().parent
+                                .relativize(libFile.toPath().toAbsolutePath())
+                                .joinToString("/")
+                    })
         }
-        finalMetaData.storeToZipFile(
-                outFile,
-                "kotlin_script.metadata")
-        updateManifest(outFile,
-                mainClass = finalMetaData.main,
-                cp = (rtDeps + finalMetaData.dep.filter {
-                    it.scope in listOf(Scope.Compile, Scope.Runtime)
-                }).map {
-                    val libFile = resolveLib(it)
-                    outFile.toPath().toAbsolutePath().parent
-                            .relativize(libFile.toPath().toAbsolutePath())
-                            .joinToString("/")
-                })
         return finalMetaData
     }
 

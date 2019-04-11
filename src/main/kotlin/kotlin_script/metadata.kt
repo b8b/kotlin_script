@@ -1,6 +1,9 @@
 package kotlin_script
 
-import java.io.*
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.net.URI
 import java.nio.file.FileSystems
 import java.nio.file.Files
@@ -26,9 +29,7 @@ data class MetaData(
         }
         dep.forEach { d ->
             val k = when (d.scope) {
-                Scope.Compiler -> "COMPILER"
-                Scope.CompilerPlugin -> "PLUGIN"
-                Scope.CompileOnly -> "CDEP"
+                Scope.Plugin -> "PLUGIN"
                 Scope.Runtime -> "RDEP"
                 else -> "DEP"
             }
@@ -84,10 +85,8 @@ fun parseMetaData(scriptFile: File): MetaData {
     }
     val dep = listOf(
             "DEP" to Scope.Compile,
-            "CDEP" to Scope.CompileOnly,
             "RDEP" to Scope.Runtime,
-            "COMPILER" to Scope.Compiler,
-            "PLUGIN" to Scope.CompilerPlugin
+            "PLUGIN" to Scope.Plugin
     ).flatMap { scope ->
         metaDataMap[scope.first]?.map { spec ->
             parseDependency(spec).copy(scope = scope.second)
