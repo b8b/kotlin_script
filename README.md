@@ -25,7 +25,7 @@ additional meta data and a main function/method (no kts support for now).
 You can try an example:
 
 ```
-./src/test/kotlin/examples/check_kotlin_update.kt
+./examples/hello.kt
 ```
 
 The file is compiled to a jar file and stored into `~/.kotlin_script/cache`. 

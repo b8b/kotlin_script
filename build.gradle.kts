@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.*
 import java.security.MessageDigest
@@ -25,13 +26,32 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    create("examples") {
+        withConvention(KotlinSourceSet::class) {
+            kotlin.setSrcDirs(listOf("examples"))
+            Unit
+        }
+    }
+}
+
+configurations {
+    named("examplesCompile") {
+        extendsFrom(compile.get())
+    }
+}
+
+fun DependencyHandler.`examplesCompile`(dependencyNotation: Any): Dependency? =
+        add("examplesCompile", dependencyNotation)
+
 dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib")
     testCompile("junit:junit:4.12")
-    testCompile("com.pi4j:pi4j-core:1.1")
-    testCompile("org.apache.sshd:sshd-netty:2.1.0")
-    testCompile("io.vertx:vertx-core:3.6.0")
-    testCompile("com.fasterxml.jackson.core:jackson-databind:2.9.8")
+
+    examplesCompile("com.pi4j:pi4j-core:1.1")
+    examplesCompile("org.apache.sshd:sshd-netty:2.1.0")
+    examplesCompile("io.vertx:vertx-core:3.6.0")
+    examplesCompile("com.fasterxml.jackson.core:jackson-databind:2.9.8")
 }
 
 val compileKotlin: KotlinCompile by tasks
