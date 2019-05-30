@@ -1,6 +1,7 @@
 package kotlin_script
 
 import java.io.File
+import java.io.FileOutputStream
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -9,6 +10,8 @@ import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.jar.Manifest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 private const val kotlinCompilerMain =
         "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
@@ -150,22 +153,35 @@ class KotlinScript(
         val incArgs = metaData.inc.map { inc ->
             File(scriptFile.parentFile, inc.path).path
         }
-        val compilerArgs: List<String> = listOf(
-                *kotlinCompilerArgs(),
-                *compileClassPathArgs.toTypedArray(),
-                "-d", outFile.toString(),
-                scriptFile.absolutePath,
-                *incArgs.toTypedArray()
-        )
-        if (trace) println("++ ${compilerArgs.joinToString(" ")}")
-        val compilerProcess = ProcessBuilder(*compilerArgs.toTypedArray())
-                .redirectErrorStream(true)
-                .start()
-        compilerProcess.outputStream.close()
-        val compilerErrors = compilerProcess.inputStream.use { `in` ->
-            String(`in`.readBytes())
+        val scriptFileArgs = when (scriptFile.name.endsWith(".kt")) {
+            true -> listOf(scriptFile.absolutePath)
+            else -> emptyList()
         }
-        val rc = compilerProcess.waitFor()
+        val (rc, compilerErrors) = if (!scriptFileArgs.isEmpty()
+                || !incArgs.isEmpty()) {
+            val compilerArgs: List<String> = listOf(
+                    *kotlinCompilerArgs(),
+                    *compileClassPathArgs.toTypedArray(),
+                    "-d", outFile.toString(),
+                    *scriptFileArgs.toTypedArray(),
+                    *incArgs.toTypedArray()
+            )
+            if (trace) println("++ ${compilerArgs.joinToString(" ")}")
+            val compilerProcess = ProcessBuilder(*compilerArgs.toTypedArray())
+                    .redirectErrorStream(true)
+                    .start()
+            compilerProcess.outputStream.close()
+            val compilerErrors = compilerProcess.inputStream.use { `in` ->
+                String(`in`.readBytes())
+            }
+            val rc = compilerProcess.waitFor()
+            rc to compilerErrors
+        } else {
+            FileOutputStream(outFile).use { out ->
+                ZipOutputStream(out).close()
+            }
+            0 to ""
+        }
         val finalMetaData = metaData.copy(
                 dep = metaData.dep,
                 compilerExitCode = rc,
