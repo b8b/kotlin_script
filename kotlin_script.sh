@@ -111,7 +111,7 @@ do_fetch()
   exit 1
 }
 
-trap '[ x"$tmp_f" = x ] || rm -f "$tmp_f"'
+trap '[ x"$tmp_f" = x ] || rm -f "$tmp_f"' EXIT
 
 if ! [ -e "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib/kotlin-stdlib.jar ]; then
   mkdir -p "$ks_home"/kotlin-compiler-"@stdlib_ver@"/kotlinc/lib \
@@ -165,9 +165,11 @@ while read -r line; do
       script_sha256="$sha256"
       md_cache_dir="$ks_home"/cache-@ks_jar_ver@/"${script_sha256%??????????????????????????????????????????????????????????????}"
       md_cache="$md_cache_dir"/"${script_sha256#??}".metadata
-      chk="${chk}$sha256 *$script_name"$'\n'
+      chk="${chk}$sha256 *$script_name
+"
     else
-      chk="${chk}$sha256 *$inc"$'\n'
+      chk="${chk}$sha256 *$inc
+"
     fi
     ;;
   esac
