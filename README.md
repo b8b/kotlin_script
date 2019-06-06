@@ -23,7 +23,7 @@ This version of `kotlin_script` is used by embedding
 #!/bin/sh
 
 /*__kotlin_script_installer__/ 2>/dev/null
-#
+# vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
 #   | | _____ | |_| |_ _ __    ___  ___ _ __ _ _ __ | |_
@@ -32,19 +32,19 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.30.0
+v=1.3.31.1
 artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
+repo=${repo:-https://repo1.maven.org/maven2}
 if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
   fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
   mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/"$v"
   tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" \
-      "${repo:=https://repo1.maven.org/maven2}"/"$artifact"; then
+  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" "$repo"/"$artifact"; then
     echo "error: failed to fetch kotlin_script" >&2
     rm -f "$tmp_f"; exit 1
   fi
   case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "ae510b3afffdf06c536d78730b0d4e29f161db0bf4c9e866f415747ae0294f28 "*)
+  "d6cd4372ee10a2b2ff0db496a376be56823f0b7a6f36ccd9aaf8b9e7a26089b0 "*)
     mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
   *)
     echo "error: failed to validate kotlin_script" >&2
