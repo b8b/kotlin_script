@@ -32,7 +32,7 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.31.1
+v=1.3.50.0
 artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
 repo=${repo:-https://repo1.maven.org/maven2}
 if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
@@ -44,7 +44,7 @@ if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
     rm -f "$tmp_f"; exit 1
   fi
   case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "d6cd4372ee10a2b2ff0db496a376be56823f0b7a6f36ccd9aaf8b9e7a26089b0 "*)
+  "bc0b5ea439dd119e3baf4432746d8c4e713c1740b36291dd35a14b5282a0d2d6 "*)
     mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
   *)
     echo "error: failed to validate kotlin_script" >&2
