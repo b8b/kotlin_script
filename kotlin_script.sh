@@ -198,5 +198,8 @@ if ! mv -f "$tmp_f".jar "$target"; then
   exit 1
 fi
 
-exec ${java_cmd} -jar "$target" "$@"
+exec ${java_cmd} -jar "$target" \
+	-Dkotlin_script.home="$ks_home" \
+	-Dkotlin_script.name="$script_file" \
+	"$@"
 exit 2
