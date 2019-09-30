@@ -4,7 +4,7 @@ import java.io.*
 import java.security.MessageDigest
 
 plugins {
-    val kotlinVersion = "1.3.31"
+    val kotlinVersion = "1.3.50"
 
     kotlin("jvm") version kotlinVersion
     id("org.jetbrains.dokka") version "0.9.17"
@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "org.cikit.kotlin_script"
-version = "1.3.31.1"
+version = "1.3.50.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_7
