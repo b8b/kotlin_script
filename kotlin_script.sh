@@ -38,7 +38,10 @@ if [ -e "$md_cache" ]; then
   parse_script_metadata
   if [ -e "$target" ]; then
     #TODO check if all dependencies are present
-    exec ${java_cmd} -jar "$target" "$@"
+    exec ${java_cmd} \
+           -Dkotlin_script.home="$ks_home" \
+           -Dkotlin_script.name="$script_file" \
+           -jar "$target" "$@"
     exit 2
   fi
 fi
@@ -198,8 +201,9 @@ if ! mv -f "$tmp_f".jar "$target"; then
   exit 1
 fi
 
-exec ${java_cmd} -jar "$target" \
-	-Dkotlin_script.home="$ks_home" \
-	-Dkotlin_script.name="$script_file" \
-	"$@"
+exec ${java_cmd} \
+       -Dkotlin_script.home="$ks_home" \
+       -Dkotlin_script.name="$script_file" \
+       -jar "$target" \
+       "$@"
 exit 2
