@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "org.cikit.kotlin_script"
-version = "1.3.50.0"
+version = "1.3.50.1"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_7
