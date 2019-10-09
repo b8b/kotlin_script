@@ -117,7 +117,8 @@ class KotlinScript(
                 "-Djava.awt.headless=true",
                 "-cp", cp,
                 kotlinCompilerMain,
-                "-kotlin-home", tmpKotlinHome.absolutePath
+                "-kotlin-home", tmpKotlinHome.absolutePath,
+                "-jvm-target", System.getProperty("java.vm.specification.version")
         )
     }
 
