@@ -1,27 +1,30 @@
 package kotlin_script
 
 import java.io.File
-import java.io.FileOutputStream
+import java.io.IOException
 import java.net.URL
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
+import java.nio.file.*
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
+import java.util.jar.Attributes
 import java.util.jar.Manifest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.system.exitProcess
 
 private const val kotlinCompilerMain =
         "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
 
+const val manifestPath = "META-INF/MANIFEST.MF"
+
 class KotlinScript(
-        val javaHome: File,
-        val kotlinScriptHome: File,
+        val javaHome: Path,
+        val kotlinScriptHome: Path,
         val mavenRepoUrl: String,
-        val mavenRepoCache: File?,
-        val localRepo: File,
+        val mavenRepoCache: Path?,
+        val localRepo: Path,
         val trace: Boolean
 ) {
     private val manifest = javaClass.classLoader
@@ -42,19 +45,16 @@ class KotlinScript(
             ?.map { spec -> parseDependency(spec).copy(scope = Scope.Runtime) }
             ?: error("no compiler classpath in manifest")
 
-    private fun resolveLib(dep: Dependency): File {
+    private fun resolveLib(dep: Dependency): Path {
         val subPath = dep.subPath
         if (mavenRepoCache != null) {
-            val f = File(mavenRepoCache, subPath)
-            if (f.exists()) return f
+            val f = mavenRepoCache.resolve(subPath)
+            if (Files.exists(f)) return f
         }
-        val f = File(localRepo, subPath)
-        if (f.exists()) return f
-        Files.createDirectories(f.toPath().parent)
-        val tmp = Files.createTempFile(
-                f.toPath().parent,
-                f.name + "~",
-                "")
+        val f = localRepo.resolve(subPath)
+        if (Files.exists(f)) return f
+        Files.createDirectories(f.parent)
+        val tmp = Files.createTempFile(f.parent, "${f.fileName}~", "")
         try {
             if (trace) println("++ fetch $mavenRepoUrl/$subPath")
             val md = MessageDigest.getInstance("SHA-256")
@@ -76,16 +76,12 @@ class KotlinScript(
                 error("unexpected sha256=$sha256 for $dep")
             }
             Files.move(
-                    tmp, f.toPath(),
+                    tmp, f,
                     StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING
             )
-        } catch(ex: Throwable) {
-            try {
-                Files.delete(tmp)
-            } catch (_: java.nio.file.NoSuchFileException) {
-            }
-            throw ex
+        } finally {
+            Files.deleteIfExists(tmp)
         }
         return f
     }
@@ -99,127 +95,246 @@ class KotlinScript(
         }.toSet()
         val kotlinVersion = kotlinVersions.singleOrNull(String::isNotEmpty)
                 ?: error("conflicting kotlin versions in compiler dependencies")
-        val tmpKotlinHome = File(kotlinScriptHome,
-                "kotlin-compiler-$kotlinVersion/kotlinc")
-        Files.createDirectories(File(tmpKotlinHome, "lib").toPath())
+        val tmpKotlinHome = kotlinScriptHome.resolve(
+                "kotlin-compiler-$kotlinVersion/kotlinc"
+        )
+        val tmpKotlinLib = tmpKotlinHome.resolve("lib")
+        Files.createDirectories(tmpKotlinLib)
         val cp = compilerClassPath.joinToString(File.pathSeparator) { d ->
             val f = resolveLib(d)
-            val copy = File(tmpKotlinHome, "lib/${d.artifactId}.${d.type}")
-            if (!copy.exists()) {
-                Files.copy(f.toPath(), copy.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING)
+            val copy = tmpKotlinLib.resolve("${d.artifactId}.${d.type}")
+            if (!Files.exists(copy)) {
+                Files.copy(f, copy, StandardCopyOption.REPLACE_EXISTING)
             }
             //TODO use correct quoting
-            copy.absolutePath
+            copy.toAbsolutePath().toString()
         }
         return arrayOf(
-                File(javaHome, "bin/java").absolutePath,
+                javaHome.resolve("bin/java").toAbsolutePath().toString(),
                 "-Djava.awt.headless=true",
                 "-cp", cp,
                 kotlinCompilerMain,
-                "-kotlin-home", tmpKotlinHome.absolutePath,
-                "-jvm-target", System.getProperty("java.vm.specification.version")
+                "-kotlin-home", tmpKotlinHome.toAbsolutePath().toString(),
+                "-jvm-target",
+                System.getProperty("java.vm.specification.version")
         )
     }
 
-    fun compile(scriptFile: File, outFile: File): MetaData {
+    fun compile(scriptFile: Path, outFile: Path): MetaData {
         val metaData = parseMetaData(scriptFile)
 
-        val runtimeClassPath = compilerClassPath.filter {
-            it.artifactId in listOf("kotlin-stdlib", "kotlin-reflect")
-        }
-        val compileClassPath = (runtimeClassPath + metaData.dep.filter { d ->
-            d.scope == Scope.Compile
-        }).map { d -> resolveLib(d) }
-        Files.createDirectories(outFile.parentFile.toPath())
-        val permissions = PosixFilePermissions.asFileAttribute(setOf(
-                PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE
-        ))
-        try {
-            Files.createFile(outFile.toPath(), permissions)
-        } catch (_: UnsupportedOperationException) {
-        } catch (ex: FileAlreadyExistsException) {
-            Files.setPosixFilePermissions(outFile.toPath(), permissions.value())
-        }
-        val compileClassPathArgs = when {
-            compileClassPath.isEmpty() -> emptyList()
-            else -> listOf(
-                    "-cp", compileClassPath.joinToString(File.pathSeparator)
-            )
-        }
-        // TODO cached scripts should be used for compilation
-        // --> use a temp dir for compilation and also attach script
-        //     sources to jar (or it is possible with embedded compiler?)
-        val incArgs = metaData.inc.map { inc ->
-            File(scriptFile.parentFile, inc.path).path
-        }
-        val scriptFileArgs = when (scriptFile.name.endsWith(".kt")) {
-            true -> listOf(scriptFile.absolutePath)
-            else -> emptyList()
-        }
-        val (rc, compilerErrors) = if (!scriptFileArgs.isEmpty()
-                || !incArgs.isEmpty()) {
-            val compilerArgs: List<String> = listOf(
-                    *kotlinCompilerArgs(),
-                    *compileClassPathArgs.toTypedArray(),
-                    "-d", outFile.toString(),
-                    *scriptFileArgs.toTypedArray(),
-                    *incArgs.toTypedArray()
-            )
-            if (trace) println("++ ${compilerArgs.joinToString(" ")}")
-            val compilerProcess = ProcessBuilder(*compilerArgs.toTypedArray())
-                    .redirectErrorStream(true)
-                    .start()
-            compilerProcess.outputStream.close()
-            val compilerErrors = compilerProcess.inputStream.use { `in` ->
-                String(`in`.readBytes())
-            }
-            val rc = compilerProcess.waitFor()
-            rc to compilerErrors
-        } else {
-            FileOutputStream(outFile).use { out ->
-                ZipOutputStream(out).close()
-            }
-            0 to ""
-        }
-        val finalMetaData = metaData.copy(
-                dep = metaData.dep,
-                compilerExitCode = rc,
-                compilerErrors = compilerErrors.split("\n")
+        // copy script to temp dir
+        val tmp = Files.createTempDirectory(
+                outFile.parent, outFile.fileName.toString()
+                .removeSuffix(".jar") + "."
         )
-        if (rc != 0) {
-            // remove output file
-            try {
-                Files.delete(outFile.toPath())
-            } catch (_: java.nio.file.NoSuchFileException) {
+        try {
+            val maxDepth = metaData.inc.map { inc ->
+                // e.g. ../../../common/util.kt -> 2
+                inc.path.indexOfLast { component ->
+                    component.fileName.toString() == ".."
+                }
+            }.max() ?: -1
+            val scriptTmpSubPath = when {
+                maxDepth >= 0 -> {
+                    // e.g. maxDepth = 2
+                    // /work/kotlin_script/src/main/kotlin/main.kt
+                    // -> src/main/kotlin/main.kt
+                    val nameCount = scriptFile.nameCount
+                    val scriptSubPath = scriptFile.subpath(
+                            nameCount - maxDepth - 2,
+                            nameCount)
+                    scriptSubPath
+                }
+                else -> scriptFile.fileName
             }
-        } else {
-            finalMetaData.storeToZipFile(
-                    outFile,
-                    "kotlin_script.metadata")
-            updateManifest(outFile,
-                    mainClass = finalMetaData.main,
-                    cp = (runtimeClassPath + finalMetaData.dep.filter {
-                        it.scope in listOf(Scope.Compile, Scope.Runtime)
-                    }).map {
-                        val libFile = resolveLib(it)
-                        outFile.toPath().toAbsolutePath().parent
-                                .relativize(libFile.toPath().toAbsolutePath())
-                                .joinToString("/")
-                    })
+            val scriptTmpPath = tmp.resolve(scriptTmpSubPath)
+            val scriptTmpParent = scriptTmpPath.parent
+            if (tmp != scriptTmpParent) {
+                Files.createDirectories(scriptTmpParent)
+            }
+            Files.newOutputStream(scriptTmpPath).use { out ->
+                out.write(metaData.mainScript.data)
+            }
+
+            // copy inc to temp dir
+            val incArgs = metaData.inc.map { inc ->
+                val tmpIncFile = scriptTmpParent.resolve(inc.path)
+                val tmpIncParent = tmpIncFile.parent
+                if (tmp != tmpIncParent) {
+                    Files.createDirectories(tmpIncParent)
+                }
+                Files.newOutputStream(tmpIncFile).use { out ->
+                    out.write(inc.data)
+                }
+                inc.path.toString()
+            }
+
+            // call compiler
+            val scriptFileName = scriptFile.fileName.toString()
+            val scriptFileArgs = when (scriptFileName.endsWith(".kt")) {
+                true -> listOf(scriptFileName)
+                else -> emptyList()
+            }
+            val runtimeClassPath = compilerClassPath.filter {
+                it.artifactId in listOf("kotlin-stdlib", "kotlin-reflect")
+            }
+            val compileClassPath = (
+                    runtimeClassPath + metaData.dep.filter { d ->
+                        d.scope == Scope.Compile
+                    }).map { d -> resolveLib(d).toAbsolutePath() }
+            val compileClassPathArgs = when {
+                compileClassPath.isEmpty() -> emptyList()
+                else -> listOf(
+                        "-cp",
+                        compileClassPath.joinToString(File.pathSeparator)
+                )
+            }
+            val (rc, compilerErrors) = if (scriptFileArgs.isNotEmpty()
+                    || incArgs.isNotEmpty()) {
+                val compilerArgs: List<String> = listOf(
+                        *kotlinCompilerArgs(),
+                        *compileClassPathArgs.toTypedArray(),
+                        "-d", tmp.toAbsolutePath().toString(),
+                        *scriptFileArgs.toTypedArray(),
+                        *incArgs.toTypedArray()
+                )
+                if (trace) {
+                    println("++ ${compilerArgs.joinToString(" ")}")
+                }
+                val compilerProcess = ProcessBuilder(
+                        *compilerArgs.toTypedArray())
+                        .directory(scriptTmpParent.toFile())
+                        .redirectErrorStream(true)
+                        .start()
+                compilerProcess.outputStream.close()
+                val compilerErrors = compilerProcess.inputStream.use { `in` ->
+                    String(`in`.readBytes())
+                }
+                val rc = compilerProcess.waitFor()
+                rc to compilerErrors
+            } else {
+                0 to ""
+            }
+
+            val finalMetaData = metaData.copy(
+                    dep = metaData.dep,
+                    compilerExitCode = rc,
+                    compilerErrors = compilerErrors.split("\n")
+            )
+            if (rc == 0) {
+                finalMetaData.storeToFile(
+                        tmp.resolve("kotlin_script.metadata")
+                )
+                val mainClass = finalMetaData.main
+                val classPath = (runtimeClassPath + finalMetaData.dep.filter {
+                    it.scope in listOf(Scope.Compile, Scope.Runtime)
+                }).map {
+                    val libFile = resolveLib(it)
+                    outFile.toAbsolutePath().parent
+                            .relativize(libFile.toAbsolutePath())
+                            .joinToString("/")
+                }
+                val manifestFile = tmp.resolve(manifestPath)
+                val manifest = when {
+                    Files.exists(manifestFile) ->
+                        Files.newInputStream(manifestFile).use { `in` ->
+                            Manifest(`in`)
+                        }
+                    else -> Manifest()
+                }
+                manifest.mainAttributes.apply {
+                    Attributes.Name.MANIFEST_VERSION.let { key ->
+                        if (!contains(key)) put(key, "1.0")
+                    }
+                    Attributes.Name.MAIN_CLASS.let { key ->
+                        put(key, mainClass)
+                    }
+                    Attributes.Name.CLASS_PATH.let { key ->
+                        if (classPath.isNotEmpty()) {
+                            put(key, classPath.joinToString(" "))
+                        }
+                        //TODO else remove class path attribute?
+                    }
+                }
+                Files.createDirectories(manifestFile.parent)
+                Files.newOutputStream(manifestFile).use { out ->
+                    manifest.write(out)
+                }
+
+                Files.createDirectories(outFile.parent)
+                val permissions = PosixFilePermissions.asFileAttribute(setOf(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE
+                ))
+                try {
+                    Files.createFile(outFile, permissions)
+                } catch (_: UnsupportedOperationException) {
+                } catch (ex: FileAlreadyExistsException) {
+                    Files.setPosixFilePermissions(outFile, permissions.value())
+                }
+                Files.newOutputStream(outFile).use { out ->
+                    ZipOutputStream(out).use { zout ->
+                        zout.writeFileTree(tmp)
+                        zout.finish()
+                    }
+                }
+            }
+            return finalMetaData
+        } finally {
+            cleanup(tmp)
         }
-        return finalMetaData
+    }
+
+    private fun ZipOutputStream.writeFileTree(start: Path) {
+        val startFullPath = start.toUri().path
+        Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
+            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes) =
+                    FileVisitResult.CONTINUE.also {
+                        val fullPath = dir.toUri().path
+                        val entryName = fullPath.removePrefix(startFullPath)
+                        if (entryName.isNotEmpty()) {
+                            putNextEntry(ZipEntry(entryName))
+                            closeEntry()
+                        }
+                    }
+            override fun visitFile(file: Path, attrs: BasicFileAttributes) =
+                    FileVisitResult.CONTINUE.also {
+                        val fullPath = file.toUri().path
+                        val entryName = fullPath.removePrefix(startFullPath)
+                        if (entryName.isNotEmpty()) {
+                            putNextEntry(ZipEntry(entryName))
+                            Files.newInputStream(file).use { `in` ->
+                                `in`.copyTo(this@writeFileTree)
+                            }
+                            closeEntry()
+                        }
+                    }
+        })
+    }
+
+    private fun cleanup(dir: Path) {
+        try {
+            Files.walkFileTree(dir, object : SimpleFileVisitor<Path>() {
+                override fun postVisitDirectory(dir: Path, exc: IOException?) =
+                        FileVisitResult.CONTINUE.also { Files.delete(dir) }
+
+                override fun visitFile(file: Path, attrs: BasicFileAttributes) =
+                        FileVisitResult.CONTINUE.also { Files.delete(file) }
+            })
+        } catch (ex: Throwable) {
+            System.err.println("warning: exception on cleanup: $ex")
+        }
     }
 
     companion object {
 
-        private fun findJavaHome(): File {
-            val javaHome = File(System.getProperty("java.home"))
-            return if (javaHome.path.endsWith("${File.separator}jre") &&
-                    File(javaHome, "../lib/tools.jar").exists()) {
+        private fun findJavaHome(): Path {
+            val javaHome = Paths.get(System.getProperty("java.home"))
+            return if (javaHome.endsWith("jre") &&
+                    Files.isDirectory(javaHome.parent.resolve("bin"))) {
                 // detected jdk
-                File(javaHome.path.removeSuffix("${File.separator}jre"))
+                javaHome.parent
             } else {
                 javaHome
             }
@@ -228,18 +343,18 @@ class KotlinScript(
         @JvmStatic
         fun main(args: Array<String>) {
             val javaHome = findJavaHome()
-            val userHome = File(System.getProperty("user.home")
+            val userHome = Paths.get(System.getProperty("user.home")
                     ?: error("user.home system property not set"))
             val kotlinScriptHome = System.getProperty("kotlin_script.home")
-                    ?.let(::File)
-                    ?: File(userHome, ".kotlin_script")
+                    ?.let { Paths.get(it) }
+                    ?: userHome.resolve(".kotlin_script")
             val localRepo = System.getProperty("maven.repo.local")
-                    ?.let(::File)
-                    ?: File(userHome, ".m2${File.separator}repository")
+                    ?.let { Paths.get(it) }
+                    ?: userHome.resolve(".m2${File.separator}repository")
             val mavenRepoUrl = System.getProperty("maven.repo.url")
                     ?: "https://repo1.maven.org/maven2"
             val mavenRepoCache = System.getProperty("maven.repo.cache")
-                    ?.let(::File)
+                    ?.let { Paths.get(it) }
 
             val flags = mutableMapOf<String, String?>()
             var k = 0
@@ -267,21 +382,23 @@ class KotlinScript(
             val scriptFileName = args.getOrNull(k)
                     ?: error("missing script path")
 
-            val scriptFile = File(scriptFileName).canonicalFile
-            if (!scriptFile.exists()) error("file not found: '$scriptFile'")
+            val scriptFile = Paths.get(scriptFileName)
+            if (!Files.exists(scriptFile)) {
+                error("file not found: '$scriptFile'")
+            }
 
             val target = flags["-d"] ?: error("missing -d option")
-            val targetFile = File(target)
+            val targetFile = Paths.get(target)
             val metaData = ks.compile(scriptFile, targetFile)
 
             when (val storeMetaData = flags["-M"]) {
                 null -> {}
-                else -> metaData.storeToFile(File(storeMetaData))
+                else -> metaData.storeToFile(Paths.get(storeMetaData))
             }
 
             if (metaData.compilerExitCode != 0) {
                 metaData.compilerErrors.forEach(System.err::println)
-                System.exit(metaData.compilerExitCode)
+                exitProcess(metaData.compilerExitCode)
             }
         }
 

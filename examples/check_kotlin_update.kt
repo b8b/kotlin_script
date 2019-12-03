@@ -1,7 +1,7 @@
 #!/bin/sh
 
 /*__kotlin_script_installer__/ 2>/dev/null
-#
+# vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
 #   | | _____ | |_| |_ _ __    ___  ___ _ __ _ _ __ | |_
@@ -10,45 +10,44 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.21.0
+v=1.3.61.0
 artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
+repo=${repo:-https://repo1.maven.org/maven2}
 if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
-  : ${repo:=https://repo1.maven.org/maven2}
-  if which fetch >/dev/null 2>&1
-  then fetch_cmd="fetch -aAqo"
-  else fetch_cmd="curl -sSfo"
-  fi
+  fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
   mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/"$v"
-  if ! $fetch_cmd "$local_repo"/"$artifact"~ "$repo"/"$artifact"; then
+  tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
+  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" "$repo"/"$artifact"; then
     echo "error: failed to fetch kotlin_script" >&2
-    exit 1
+    rm -f "$tmp_f"; exit 1
   fi
-  case "$(openssl dgst -sha256 -r < "$local_repo"/"$artifact"~)" in
-  "82dfd24da8e2cb725a548c9ef294fdf1ac5b5a6d209d9c00c42a241e7017e587 "*)
-    mv -f "$local_repo"/"$artifact"~ "$local_repo"/"$artifact" ;;
+  case "$(openssl dgst -sha256 -r < "$tmp_f")" in
+  "0974fc19152728f27caaf2474d17957f05b791c87977cacb05722fcd586c72eb "*)
+    mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
   *)
     echo "error: failed to validate kotlin_script" >&2
-    exit 1 ;;
+    rm -f "$tmp_f"; exit 1 ;;
   esac
 fi
 . "$local_repo"/"$artifact"
 exit 2
 */
 
-///MAIN=Check_kotlin_updateKt
-
 import java.net.URL
 import java.util.*
+import kotlin.system.exitProcess
 
 private const val tagsUrl = "https://api.github.com/repos/Jetbrains/kotlin/tags"
 private val tagsRegex = """"name"\s*:\s*"v([0-9.]+)"""".toRegex()
 
 val currentVersion = object {
-    val v = javaClass.getResourceAsStream("kotlin_script.metadata").use { input ->
-        input.bufferedReader(Charsets.UTF_8).lineSequence().first { line ->
-            line.startsWith("///COMPILER=org.jetbrains.kotlin:kotlin-stdlib:")
-        }.substring(47).substringBefore(':')
-    }
+    val vPattern = """.*/kotlin-stdlib-([0-9.]+)\.jar.*""".toRegex()
+    val v = javaClass.classLoader
+            .getResources("META-INF/MANIFEST.MF")
+            .asSequence()
+            .mapNotNull { url ->
+                vPattern.matchEntire(url.toString())?.destructured?.component1()
+            }.firstOrNull() ?: error("cannot detect current kotlin version")
 }.v
 
 fun main() {
@@ -63,10 +62,10 @@ fun main() {
         val parts1 = o1.removePrefix("v").split('.')
         val parts2 = o2.removePrefix("v").split('.')
         val result = (0 until minOf(parts1.size, parts2.size)).map { i ->
-            Integer.compare(parts1[i].toInt(), parts2[i].toInt())
+            parts1[i].toInt().compareTo(parts2[i].toInt())
         }.first { it != 0 }
         if (result == 0) {
-            Integer.compare(parts1.size, parts2.size)
+            parts1.size.compareTo(parts2.size)
         } else {
             result
         }
@@ -80,6 +79,6 @@ fun main() {
     }
     if (sorted.last() != currentVersion) {
         println("--> new version found: ${sorted.last()}")
-        System.exit(1)
+        exitProcess(1)
     }
 }

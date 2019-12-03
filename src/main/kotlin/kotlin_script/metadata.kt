@@ -1,14 +1,11 @@
 package kotlin_script
 
 import java.io.ByteArrayInputStream
-import java.io.File
-import java.io.FileOutputStream
 import java.io.OutputStream
-import java.net.URI
-import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 
 data class MetaData(
         val main: String,
@@ -41,35 +38,22 @@ data class MetaData(
         w.flush()
     }
 
-    fun storeToFile(outFile: File) {
-        val tmpFile = File(outFile.path + "~")
-        Files.createDirectories(tmpFile.toPath().parent)
-        FileOutputStream(tmpFile).use { out ->
+    fun storeToFile(file: Path) {
+        val tmp = file.parent.resolve("${file.fileName}~")
+        Files.createDirectories(tmp.parent)
+        Files.newOutputStream(tmp).use { out ->
             store(out)
         }
         Files.move(
-                tmpFile.toPath(), outFile.toPath(),
+                tmp, file,
                 StandardCopyOption.ATOMIC_MOVE,
                 StandardCopyOption.REPLACE_EXISTING
         )
     }
-
-    fun storeToZipFile(zipFile: File,
-                       entryName: String = "kotlin_script.metadata") {
-        val env = mapOf<String, String>()
-        val uri = URI.create("jar:" + zipFile.toURI())
-        FileSystems.newFileSystem(uri, env).use { fs ->
-            val nf = fs.getPath(entryName)
-            Files.newOutputStream(nf, StandardOpenOption.CREATE)
-                    .use { out ->
-                        store(out)
-                    }
-        }
-    }
 }
 
-fun parseMetaData(scriptFile: File): MetaData {
-    val mainScript = loadScript(scriptFile.path)
+fun parseMetaData(scriptFile: Path): MetaData {
+    val mainScript = loadScript(scriptFile)
     val metaDataMap = ByteArrayInputStream(mainScript.data).use { `in` ->
         `in`.bufferedReader(Charsets.UTF_8).lineSequence().filter { line ->
             line.startsWith("///")
@@ -80,8 +64,9 @@ fun parseMetaData(scriptFile: File): MetaData {
                 valueTransform = { pair -> pair.getOrNull(1) ?: "" }
         )
     }
+    val scriptFileParent = scriptFile.toAbsolutePath().parent
     val scripts = metaDataMap["INC"]?.map { s ->
-        loadScript(s, scriptFile.parentFile)
+        loadScript(Paths.get(s), scriptFileParent)
     }
     val dep = listOf(
             "DEP" to Scope.Compile,
@@ -93,16 +78,17 @@ fun parseMetaData(scriptFile: File): MetaData {
         } ?: emptyList()
     }
     return MetaData(
-            metaDataMap["MAIN"]?.singleOrNull() ?: scriptFile.name?.let { name ->
-                if (name.length > 3 && name.endsWith(".kt")) {
-                    val trimmed = name.trim().removeSuffix(".kt")
-                    trimmed.first().toUpperCase() +
-                            trimmed.substring(1) +
-                            "Kt"
-                } else {
-                    null
-                }
-            } ?: throw IllegalArgumentException("missing MAIN in meta data"),
+            metaDataMap["MAIN"]?.singleOrNull()
+                    ?: scriptFile.fileName.toString().let { name ->
+                        if (name.length > 3 && name.endsWith(".kt")) {
+                            val trimmed = name.trim().removeSuffix(".kt")
+                            trimmed.first().toUpperCase() +
+                                    trimmed.substring(1) +
+                                    "Kt"
+                        } else {
+                            null
+                        }
+                    } ?: throw IllegalArgumentException("missing MAIN in meta data"),
             mainScript = mainScript,
             inc = scripts ?: emptyList(),
             dep = dep,

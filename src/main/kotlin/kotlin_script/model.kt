@@ -1,9 +1,9 @@
 package kotlin_script
 
 import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileNotFoundException
+import java.nio.file.Files
+import java.nio.file.NoSuchFileException
+import java.nio.file.Path
 import java.security.MessageDigest
 
 enum class Scope {
@@ -76,26 +76,17 @@ fun parseDependency(spec: String): Dependency {
 }
 
 class Script(
-        val path: String,
+        val path: Path,
         val checksum: String,
         val data: ByteArray
-) {
-    fun cachePath(): String {
-        val hex = checksum.substringAfter('=')
-        return hex.substring(0, 2) + "/" + hex.substring(2)
-    }
-}
+)
 
-fun loadScript(f: String, chdir: File? = null): Script {
-    val absoluteFile = if (chdir != null) {
-        File(chdir, f)
-    } else {
-        File(f)
-    }
+fun loadScript(file: Path, dir: Path? = null): Script {
+    val inputFile = if (dir == null) file else dir.resolve(file)
     val md = MessageDigest.getInstance("SHA-256")
     val data = try {
         ByteArrayOutputStream().use { out ->
-            FileInputStream(absoluteFile).use { `in` ->
+            Files.newInputStream(inputFile).use { `in` ->
                 val buffer = ByteArray(1024 * 4)
                 while (true) {
                     val read = `in`.read(buffer)
@@ -106,9 +97,9 @@ fun loadScript(f: String, chdir: File? = null): Script {
             }
             out.toByteArray()
         }
-    } catch (_: FileNotFoundException) {
+    } catch (_: NoSuchFileException) {
         ByteArray(0)
     }
     val sha256 = md.digest().joinToString("") { String.format("%02x", it) }
-    return Script(f, "sha256=$sha256", data)
+    return Script(file, "sha256=$sha256", data)
 }
