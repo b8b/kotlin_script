@@ -22,7 +22,7 @@ This version of `kotlin_script` is used by embedding
 ```Sh
 #!/bin/sh
 
-/*__kotlin_script_installer__/ 2>/dev/null
+/*__kotlin_script_installer__/ 2>&-
 # vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
