@@ -4,7 +4,7 @@ import java.io.*
 import java.security.MessageDigest
 
 plugins {
-    val kotlinVersion = "1.3.61"
+    val kotlinVersion = "1.3.72"
 
     kotlin("jvm") version kotlinVersion
     id("org.jetbrains.dokka") version "0.9.17"
@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "org.cikit.kotlin_script"
-version = "1.3.61.0"
+version = "1.3.72.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_7
@@ -43,12 +43,12 @@ fun DependencyHandler.`examplesCompile`(dependencyNotation: Any): Dependency? =
 
 dependencies {
     compile("org.jetbrains.kotlin:kotlin-stdlib")
-    testCompile("junit:junit:4.12")
+    testCompile("junit:junit:4.13")
 
-    examplesCompile("com.pi4j:pi4j-core:1.1")
-    examplesCompile("org.apache.sshd:sshd-netty:2.1.0")
-    examplesCompile("io.vertx:vertx-core:3.6.0")
-    examplesCompile("com.fasterxml.jackson.core:jackson-databind:2.9.8")
+    examplesCompile("com.pi4j:pi4j-core:1.2")
+    examplesCompile("org.apache.sshd:sshd-netty:2.4.0")
+    examplesCompile("io.vertx:vertx-core:3.9.0")
+    examplesCompile("com.fasterxml.jackson.core:jackson-databind:2.11.0")
 }
 
 val compileKotlin: KotlinCompile by tasks
