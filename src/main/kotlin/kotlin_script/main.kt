@@ -218,7 +218,7 @@ class KotlinScript(
             }
 
             val finalMetaData = metaData.copy(
-                    dep = metaData.dep,
+                    dep = runtimeClassPath + metaData.dep,
                     compilerExitCode = rc,
                     compilerErrors = compilerErrors.split("\n")
             )
@@ -227,9 +227,9 @@ class KotlinScript(
                         tmp.resolve("kotlin_script.metadata")
                 )
                 val mainClass = finalMetaData.main
-                val classPath = (runtimeClassPath + finalMetaData.dep.filter {
+                val classPath = finalMetaData.dep.filter {
                     it.scope in listOf(Scope.Compile, Scope.Runtime)
-                }).map {
+                }.map {
                     val libFile = resolveLib(it)
                     outFile.toAbsolutePath().parent
                             .relativize(libFile.toAbsolutePath())

@@ -18,19 +18,20 @@ data class MetaData(
 ) {
     fun store(out: OutputStream) {
         val w = out.bufferedWriter(Charsets.UTF_8)
-        w.write("///MAIN=$main\n")
+        w.write("///SCRIPT=${mainScript.path.fileName}\n")
         w.write("///CHK=${mainScript.checksum}\n")
         inc.forEach { s ->
             w.write("///INC=${s.path}\n")
             w.write("///CHK=${s.checksum}\n")
         }
+        w.write("///MAIN=$main\n")
         dep.forEach { d ->
             val k = when (d.scope) {
                 Scope.Plugin -> "PLUGIN"
                 Scope.Runtime -> "RDEP"
                 else -> "DEP"
             }
-            w.write("///$k=${d.toSpec()}\n")
+            w.write("///$k=${d.subPath}\n")
         }
         compilerArgs.forEach { w.write("///CARG=$it\n") }
         w.write("///RC=$compilerExitCode\n")

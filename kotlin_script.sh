@@ -3,6 +3,9 @@
 : "${sha256_cmd:="openssl dgst -sha256 -r"}"
 : "${script_file:="$0"}"
 
+: "${repo:="https://repo1.maven.org/maven2"}"
+: "${local_repo:="$HOME/.m2/repository"}"
+
 script_dir="$(dirname "$script_file")"
 script_name="${script_file##*/}"
 script_sha256="$(${sha256_cmd} < "$script_file")"
@@ -12,8 +15,15 @@ md_cache="$md_cache_dir/${script_sha256#??}.metadata"
 
 parse_script_metadata()
 {
+  check_classpath=ok
   while read -r line; do
     case "$line" in
+    '///DEP='* | '///RDEP='*)
+      if ! [ -f "$local_repo/${line#*=}" ]; then
+        check_classpath=fail
+        return
+      fi
+      ;;
     '///INC='*)
       set -- "$@" "${line#///INC=}"
       ;;
@@ -36,8 +46,7 @@ __EOF__
 
 if [ -e "$md_cache" ]; then
   parse_script_metadata
-  if [ -e "$target" ]; then
-    #TODO check if all dependencies are present
+  if [ "$check_classpath" = "ok" ] && [ -e "$target" ]; then
     exec ${java_cmd} \
            "-Dkotlin_script.home=$ks_home" \
            "-Dkotlin_script.name=$script_file" \
@@ -45,9 +54,6 @@ if [ -e "$md_cache" ]; then
     exit 2
   fi
 fi
-
-: "${repo:="https://repo1.maven.org/maven2"}"
-: "${local_repo:="$HOME/.m2/repository"}"
 
 if [ "x${fetch_cmd:=}" = x ]; then
   if fetch_s="$(command -v fetch) -aAqo" || \
