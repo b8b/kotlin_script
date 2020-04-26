@@ -364,8 +364,8 @@ class KotlinScript(
                 k++
                 val v = when (key) {
                     "-c", "-d", "-M" -> args.getOrNull(k).also { k++ }
-                    "-version", "-x" -> "yes"
-                    else -> error("unknown option: $k")
+                    "-version", "-x", "-P" -> "yes"
+                    else -> error("unknown option: $key")
                 }
                 flags[key] = v
             }

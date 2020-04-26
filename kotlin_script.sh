@@ -6,7 +6,9 @@
 : "${repo:="https://repo1.maven.org/maven2"}"
 : "${local_repo:="$HOME/.m2/repository"}"
 
-script_dir="$(dirname "$script_file")"
+if [ "${script_dir:="${script_file%/*}"}" = "$script_file" ]; then
+  script_dir=.
+fi
 script_name="${script_file##*/}"
 script_sha256="$(${sha256_cmd} < "$script_file")"
 script_sha256="${script_sha256%% *}"
@@ -82,6 +84,9 @@ do_fetch()
       echo "error: no fetch tool available" >&2
       exit 1
     fi
+    if [ -t 2 ]; then
+      echo "fetching $repo/$artifact" >&2
+    fi
     if ! ${fetch_cmd} "$tmp_f" "$repo/$artifact"; then
       echo "error: failed to fetch $repo/$artifact" >&2
       exit 1
@@ -93,10 +98,13 @@ do_fetch()
       ;;
     esac
   else
-    tmp_f="$(mktemp "$local_repo/$artifact~XXXXXXXXXXXXXXXX")" || exit 1
     if [ "x$fetch_cmd" = x ]; then
       echo "error: no fetch tool available" >&2
       exit 1
+    fi
+    tmp_f="$(mktemp "$local_repo/$artifact~XXXXXXXXXXXXXXXX")" || exit 1
+    if [ -t 2 ]; then
+      echo "fetching $repo/$artifact" >&2
     fi
     if ! ${fetch_cmd} "$tmp_f" "$repo/$artifact"; then
       echo "error: failed to fetch $repo/$artifact" >&2
@@ -120,6 +128,7 @@ do_fetch()
   exit 1
 }
 
+tmp_f=
 trap '[ "x$tmp_f" = x ] || rm -f "$tmp_f"' EXIT
 
 if ! [ -e "$ks_home/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar" ]; then
@@ -148,6 +157,10 @@ case "$-" in
   kotlin_script_flags="$kotlin_script_flags -x"
   ;;
 esac
+
+if [ -t 2 ]; then
+  kotlin_script_flags="$kotlin_script_flags -P"
+fi
 
 if ! ${java_cmd} "-Dmaven.repo.url=$repo" \
                  "-Dmaven.repo.local=$local_repo" \
@@ -210,6 +223,7 @@ fi
 exec ${java_cmd} \
        "-Dkotlin_script.home=$ks_home" \
        "-Dkotlin_script.name=$script_file" \
+       "-Dkotlin_script.flags=$kotlin_script_flags" \
        -jar "$target" \
        "$@"
 exit 2

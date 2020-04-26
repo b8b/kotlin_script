@@ -121,7 +121,7 @@ class ZshTests {
             if (binDir.exists()) cleanup(binDir.toPath())
             Files.createDirectories(binDir.toPath())
             listOf(
-                    "rm", "mv", "cp", "mkdir", "dirname", "mktemp",
+                    "rm", "mv", "cp", "mkdir", "mktemp",
                     *(if (fetch == null) emptyArray() else arrayOf("fetch")),
                     *(if (curl == null) emptyArray() else arrayOf("curl")),
                     "openssl", "java"
