@@ -1,6 +1,6 @@
 #!/bin/sh
 
-/*__kotlin_script_installer__/ 2>/dev/null
+/*__kotlin_script_installer__/ 2>&-
 # vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.61.0
+v=1.3.72.0
 artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
 repo=${repo:-https://repo1.maven.org/maven2}
 if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
@@ -22,7 +22,7 @@ if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
     rm -f "$tmp_f"; exit 1
   fi
   case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "0974fc19152728f27caaf2474d17957f05b791c87977cacb05722fcd586c72eb "*)
+  "175648b97df5b0410c177a379f58aca8f029b3da705ecfda87b542133ba0ac2d "*)
     mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
   *)
     echo "error: failed to validate kotlin_script" >&2
