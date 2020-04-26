@@ -72,6 +72,34 @@ class ZshTests {
                         ksHome.toPath().toAbsolutePath())}"
         )
 
+        private val zsh = ProcessBuilder("sh", "-c", "command -v zsh").let { pb ->
+            pb.inheritIO()
+            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            val p = pb.start()
+            val out = p.inputStream.use { `in` -> String(`in`.readBytes()).trim() }
+            val rc = p.waitFor()
+            if (rc != 0) error("cannot find location of zsh command")
+            out
+        }
+
+        private val fetch = ProcessBuilder("sh", "-c", "command -v fetch").let { pb ->
+            pb.inheritIO()
+            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            val p = pb.start()
+            val out = p.inputStream.use { `in` -> String(`in`.readBytes()).trim() }
+            val rc = p.waitFor()
+            if (rc != 0) null else out
+        }
+
+        private val curl = ProcessBuilder("sh", "-c", "command -v curl").let { pb ->
+            pb.inheritIO()
+            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            val p = pb.start()
+            val out = p.inputStream.use { `in` -> String(`in`.readBytes()).trim() }
+            val rc = p.waitFor()
+            if (rc != 0) null else out
+        }
+
         private data class Script(
                 val name: String,
                 val sha256: String,
@@ -94,7 +122,9 @@ class ZshTests {
             Files.createDirectories(binDir.toPath())
             listOf(
                     "rm", "mv", "cp", "mkdir", "dirname", "mktemp",
-                    "fetch", "openssl", "java"
+                    *(if (fetch == null) emptyArray() else arrayOf("fetch")),
+                    *(if (curl == null) emptyArray() else arrayOf("curl")),
+                    "openssl", "java"
             ).forEach { tool ->
                 val outFile = File(binDir, tool)
                 Files.newOutputStream(outFile.toPath(),
@@ -296,7 +326,7 @@ class ZshTests {
         try {
             runScript("test_compile_ok.out",
                     "env", *env, "script_file=test.kt",
-                    "/usr/local/bin/zsh", "-xy", "test.kt")
+                    zsh, "-xy", "test.kt")
         } catch (ex: IllegalStateException) {
             throw RuntimeException(ex)
         }
@@ -319,7 +349,7 @@ class ZshTests {
         compileOk()
         runScript("test_all_cached.out",
                 "env", *env, "script_file=test.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
     }
 
     @Test(expected = IllegalStateException::class)
@@ -329,7 +359,7 @@ class ZshTests {
         }
         runScript("test_compile_error.out",
                 "env", *env, "script_file=test_err.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
     }
 
     @Test(expected = IllegalStateException::class)
@@ -339,7 +369,7 @@ class ZshTests {
         }
         runScript("test_compile_inv_inc.out",
                 "env", *env, "script_file=test_inv_inc.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
     }
 
     @Test(expected = IllegalStateException::class)
@@ -349,7 +379,7 @@ class ZshTests {
         }
         runScript("test_inv_dep.out",
                 "env", *env, "script_file=test_inv_dep.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
 
     }
 
@@ -359,7 +389,7 @@ class ZshTests {
         cleanup(ksHome.toPath())
         runScript("test_copy_from_local_repo.out",
                 "env", *env, "script_file=test.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
     }
 
     @Test
@@ -371,7 +401,7 @@ class ZshTests {
                 .use { out -> out.write("broken!".toByteArray()) }
         runScript("test_bad_local_repo.out",
                 "env", *env, "script_file=test.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
     }
 
     @Test(expected = IllegalStateException::class)
@@ -381,13 +411,14 @@ class ZshTests {
         val subDir = "org/cikit/kotlin_script/kotlin_script/$v"
         listOf(
                 File(localRepo, "$subDir/kotlin_script-$v.jar"),
-                File(binDir, "fetch")
+                File(binDir, "fetch"),
+                File(binDir, "curl")
         ).forEach { f ->
-            Files.delete(f.toPath())
+            Files.deleteIfExists(f.toPath())
         }
         runScript("test_no_fetch_tool.out",
                 "env", *env, "script_file=test.kt",
-                "/usr/local/bin/zsh", "-xy", "test.kt")
+                zsh, "-xy", "test.kt")
     }
 
 }
