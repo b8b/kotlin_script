@@ -4,7 +4,7 @@ import java.io.*
 import java.security.MessageDigest
 
 plugins {
-    val kotlinVersion = "1.3.72"
+    val kotlinVersion = "1.4-M1"
 
     kotlin("jvm") version kotlinVersion
     id("org.jetbrains.dokka") version "0.9.17"
@@ -12,15 +12,17 @@ plugins {
 }
 
 group = "org.cikit.kotlin_script"
-version = "1.3.72.0"
+version = "1.4-M1.0"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_7
-    targetCompatibility = JavaVersion.VERSION_1_7
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 repositories {
     mavenCentral()
+    maven(url = "https://dl.bintray.com/kotlin/kotlin-eap")
+    maven(url = "https://kotlin.bintray.com/kotlinx")
 }
 
 sourceSets {
@@ -54,12 +56,12 @@ dependencies {
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
     jdkHome = properties["jdk.home"]?.toString()?.takeIf { it != "unspecified" }
-    jvmTarget = "1.6"
+    jvmTarget = "1.8"
 }
 
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "1.6"
+    jvmTarget = "1.8"
 }
 compileTestKotlin.dependsOn.add("jar")
 compileTestKotlin.dependsOn.add("buildKotlinScriptSh")
