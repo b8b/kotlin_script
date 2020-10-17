@@ -1,10 +1,10 @@
-: "${ks_home:="$HOME/.kotlin_script"}"
+: "${ks_home:="$HOME"/.kotlin_script}"
 : "${java_cmd:="java"}"
 : "${sha256_cmd:="openssl dgst -sha256 -r"}"
 : "${script_file:="$0"}"
 
-: "${repo:="https://repo1.maven.org/maven2"}"
-: "${local_repo:="$HOME/.m2/repository"}"
+: "${repo:=https://repo1.maven.org/maven2}"
+: "${local_repo:="$HOME"/.m2/repository}"
 
 if [ "${script_dir:="${script_file%/*}"}" = "$script_file" ]; then
   script_dir=.
@@ -12,8 +12,8 @@ fi
 script_name="${script_file##*/}"
 script_sha256="$(${sha256_cmd} < "$script_file")"
 script_sha256="${script_sha256%% *}"
-md_cache_dir="$ks_home/cache-@ks_jar_ver@/${script_sha256%??????????????????????????????????????????????????????????????}"
-md_cache="$md_cache_dir/${script_sha256#??}.metadata"
+md_cache_dir="$ks_home"/cache-@ks_jar_ver@/"${script_sha256%??????????????????????????????????????????????????????????????}"
+md_cache="$md_cache_dir"/"${script_sha256#??}".metadata
 
 parse_script_metadata()
 {
@@ -21,7 +21,7 @@ parse_script_metadata()
   while read -r line; do
     case "$line" in
     '///DEP='* | '///RDEP='*)
-      if ! [ -f "$local_repo/${line#*=}" ]; then
+      if ! [ -f "$local_repo"/"${line#*=}" ]; then
         check_classpath=fail
         return
       fi
@@ -43,21 +43,21 @@ $chk
 __EOF__
 )" || exit 1
   target_sha256="${target_sha256%% *}"
-  target="$ks_home/cache-@ks_jar_ver@/${target_sha256%??????????????????????????????????????????????????????????????}/${target_sha256#??}.jar"
+  target="$ks_home"/cache-@ks_jar_ver@/"${target_sha256%??????????????????????????????????????????????????????????????}"/"${target_sha256#??}".jar
 }
 
 if [ -e "$md_cache" ]; then
   parse_script_metadata
   if [ "$check_classpath" = "ok" ] && [ -e "$target" ]; then
     exec ${java_cmd} \
-           "-Dkotlin_script.home=$ks_home" \
-           "-Dkotlin_script.name=$script_file" \
+           -Dkotlin_script.home="$ks_home" \
+           -Dkotlin_script.name="$script_file" \
            -jar "$target" "$@"
     exit 2
   fi
 fi
 
-if [ "x${fetch_cmd:=}" = x ]; then
+if [ x"${fetch_cmd:=}" = x ]; then
   if fetch_s="$(command -v fetch) -aAqo" || \
      fetch_s="$(command -v curl) -fSso"; then
     fetch_cmd="$fetch_s"
@@ -70,9 +70,9 @@ do_fetch()
   artifact="$2"
   sha256="$3"
 
-  if [ -e "$local_repo/$artifact" ]; then
-    tmp_f="$(mktemp "$dest~XXXXXXXXXXXXXXXX")" || exit 1
-    cp -f "$local_repo/$artifact" "$tmp_f" || exit 1
+  if [ -e "$local_repo"/"$artifact" ]; then
+    tmp_f="$(mktemp "$dest"~XXXXXXXXXXXXXXXX)" || exit 1
+    cp -f "$local_repo"/"$artifact" "$tmp_f" || exit 1
     case "$(${sha256_cmd} < "$tmp_f")" in
     "$sha256 "*)
       mv -f "$tmp_f" "$dest" || exit 1
@@ -80,7 +80,7 @@ do_fetch()
       ;;
     esac
     echo "warning: failed to validate $local_repo/$artifact" >&2
-    if [ "x$fetch_cmd" = x ]; then
+    if [ x"$fetch_cmd" = x ]; then
       echo "error: no fetch tool available" >&2
       exit 1
     fi
@@ -98,11 +98,11 @@ do_fetch()
       ;;
     esac
   else
-    if [ "x$fetch_cmd" = x ]; then
+    if [ x"$fetch_cmd" = x ]; then
       echo "error: no fetch tool available" >&2
       exit 1
     fi
-    tmp_f="$(mktemp "$local_repo/$artifact~XXXXXXXXXXXXXXXX")" || exit 1
+    tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
     if [ -t 2 ]; then
       echo "fetching $repo/$artifact" >&2
     fi
@@ -112,13 +112,13 @@ do_fetch()
     fi
     case "$(${sha256_cmd} < "$tmp_f")" in
     "$sha256 "*)
-      cp -f "$tmp_f" "$dest~${tmp_f##*/}" || exit 1
-      if ! mv -f "$dest~${tmp_f##*/}" "$dest"; then
-        rm -f "$dest~${tmp_f##*/}"
-        mv -f "$tmp_f" "$local_repo/$artifact"
+      cp -f "$tmp_f" "$dest"~"${tmp_f##*/}" || exit 1
+      if ! mv -f "$dest"~"${tmp_f##*/}" "$dest"; then
+        rm -f "$dest"~"${tmp_f##*/}"
+        mv -f "$tmp_f" "$local_repo"/"$artifact"
         exit 1
       else
-        mv -f "$tmp_f" "$local_repo/$artifact"
+        mv -f "$tmp_f" "$local_repo"/"$artifact"
       fi
       return
       ;;
@@ -129,26 +129,26 @@ do_fetch()
 }
 
 tmp_f=
-trap '[ "x$tmp_f" = x ] || rm -f "$tmp_f"' EXIT
+trap '[ x"$tmp_f" = x ] || rm -f "$tmp_f"' EXIT
 
-if ! [ -e "$ks_home/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar" ]; then
-  mkdir -p "$ks_home/kotlin-compiler-@stdlib_ver@/kotlinc/lib" \
-      "$local_repo/org/jetbrains/kotlin/kotlin-stdlib/@stdlib_ver@"
-  do_fetch "$ks_home/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar" \
-           "org/jetbrains/kotlin/kotlin-stdlib/@stdlib_ver@/kotlin-stdlib-@stdlib_ver@.jar" \
-           "@stdlib_sha256@"
+if ! [ -e "$ks_home"/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar ]; then
+  mkdir -p "$ks_home"/kotlin-compiler-@stdlib_ver@/kotlinc/lib \
+      "$local_repo"/org/jetbrains/kotlin/kotlin-stdlib/@stdlib_ver@
+  do_fetch "$ks_home"/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar \
+           org/jetbrains/kotlin/kotlin-stdlib/@stdlib_ver@/kotlin-stdlib-@stdlib_ver@.jar \
+           @stdlib_sha256@
 fi
 
-mkdir -p "$ks_home/cache-@ks_jar_ver@/work"
+mkdir -p "$ks_home"/cache-@ks_jar_ver@/work
 
-if ! [ -e "$ks_home/kotlin_script-@ks_jar_ver@.jar" ]; then
-  mkdir -p "$local_repo/org/cikit/kotlin_script/kotlin_script/@ks_jar_ver@"
-  do_fetch "$ks_home/kotlin_script-@ks_jar_ver@.jar" \
-           "org/cikit/kotlin_script/kotlin_script/@ks_jar_ver@/kotlin_script-@ks_jar_ver@.jar" \
-           "@ks_jar_sha256@"
+if ! [ -e "$ks_home"/kotlin_script-@ks_jar_ver@.jar ]; then
+  mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/@ks_jar_ver@
+  do_fetch "$ks_home"/kotlin_script-@ks_jar_ver@.jar \
+           org/cikit/kotlin_script/kotlin_script/@ks_jar_ver@/kotlin_script-@ks_jar_ver@.jar \
+           @ks_jar_sha256@
 fi
 
-if ! tmp_f="$(mktemp "$ks_home/cache-@ks_jar_ver@/work/XXXXXXXXXXXXXXXX")"; then
+if ! tmp_f="$(mktemp "$ks_home"/cache-@ks_jar_ver@/work/XXXXXXXXXXXXXXXX)"; then
   exit 1
 fi
 
@@ -162,15 +162,15 @@ if [ -t 2 ]; then
   kotlin_script_flags="$kotlin_script_flags -P"
 fi
 
-if ! ${java_cmd} "-Dmaven.repo.url=$repo" \
-                 "-Dmaven.repo.local=$local_repo" \
-                 "-Dkotlin_script.home=$ks_home" \
-                 -jar "$ks_home/kotlin_script-@ks_jar_ver@.jar" \
+if ! ${java_cmd} -Dmaven.repo.url="$repo" \
+                 -Dmaven.repo.local="$local_repo" \
+                 -Dkotlin_script.home="$ks_home" \
+                 -jar "$ks_home"/kotlin_script-@ks_jar_ver@.jar \
                  ${kotlin_script_flags} \
                  -M "$tmp_f" \
-                 -d "$tmp_f.jar" \
+                 -d "$tmp_f".jar \
                  "$script_file"; then
-  rm -f "$tmp_f" "$tmp_f.jar"
+  rm -f "$tmp_f" "$tmp_f".jar
   exit 1
 fi
 
@@ -183,10 +183,10 @@ while read -r line; do
     ;;
   '///CHK=sha256='*)
     sha256="${line#///CHK=sha256=}"
-    if [ "x$inc" = x ]; then
+    if [ x"$inc" = x ]; then
       script_sha256="$sha256"
-      md_cache_dir="$ks_home/cache-@ks_jar_ver@/${script_sha256%??????????????????????????????????????????????????????????????}"
-      md_cache="$md_cache_dir/${script_sha256#??}.metadata"
+      md_cache_dir="$ks_home"/cache-@ks_jar_ver@/"${script_sha256%??????????????????????????????????????????????????????????????}"
+      md_cache="$md_cache_dir"/"${script_sha256#??}".metadata
       chk="${chk}$sha256 *$script_name
 "
     else
@@ -202,8 +202,8 @@ $chk
 __EOF__
 )" || exit 1
 target_sha256="${target_sha256%% *}"
-target_dir="$ks_home/cache-@ks_jar_ver@/${target_sha256%??????????????????????????????????????????????????????????????}"
-target="$target_dir/${target_sha256#??}.jar"
+target_dir="$ks_home"/cache-@ks_jar_ver@/"${target_sha256%??????????????????????????????????????????????????????????????}"
+target="$target_dir"/"${target_sha256#??}".jar
 
 if ! mkdir -p "$target_dir" "$md_cache_dir"; then
   rm -f "$tmp_f" "$tmp_f".jar
@@ -211,19 +211,19 @@ if ! mkdir -p "$target_dir" "$md_cache_dir"; then
 fi
 
 if ! mv -f "$tmp_f" "$md_cache"; then
-  rm -f "$tmp_f" "$tmp_f.jar"
+  rm -f "$tmp_f" "$tmp_f".jar
   exit 1
 fi
 
 if ! mv -f "$tmp_f".jar "$target"; then
-  rm -f "$tmp_f" "$tmp_f.jar"
+  rm -f "$tmp_f" "$tmp_f".jar
   exit 1
 fi
 
 exec ${java_cmd} \
-       "-Dkotlin_script.home=$ks_home" \
-       "-Dkotlin_script.name=$script_file" \
-       "-Dkotlin_script.flags=$kotlin_script_flags" \
+       -Dkotlin_script.home="$ks_home" \
+       -Dkotlin_script.name="$script_file" \
+       -Dkotlin_script.flags="$kotlin_script_flags" \
        -jar "$target" \
        "$@"
 exit 2

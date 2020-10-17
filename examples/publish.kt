@@ -41,8 +41,10 @@ import java.io.FileWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
+import java.nio.file.Paths
 import java.security.MessageDigest
 import java.util.*
+import java.util.zip.ZipFile
 
 private data class Item(val src: File, val targetName: String = src.name) {
     constructor(
@@ -125,13 +127,9 @@ fun main(args: Array<String>) {
     val repo = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
     val subDir = "org/cikit/kotlin_script/kotlin_script/$v"
 
-    val libDir = "build/libs"
-
+    val libDir = Paths.get(System.getProperty("user.home"), ".m2", "repository", subDir)
     val filesToPublish = listOf(
-            Item(
-                    "build/publications/mavenJava/pom-default.xml",
-                    "kotlin_script-$v.pom"
-            ),
+            Item("$libDir/kotlin_script-$v.pom"),
             Item("$libDir/kotlin_script-$v.sh"),
             Item("$libDir/kotlin_script-$v.jar"),
             Item("$libDir/kotlin_script-$v-sources.jar"),

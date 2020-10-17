@@ -134,7 +134,7 @@ class KotlinScript(
                 inc.path.indexOfLast { component ->
                     component.fileName.toString() == ".."
                 }
-            }.max() ?: -1
+            }.maxOrNull() ?: -1
             val scriptTmpSubPath = when {
                 maxDepth >= 0 -> {
                     // e.g. maxDepth = 2

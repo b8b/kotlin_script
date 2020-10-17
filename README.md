@@ -10,7 +10,15 @@ You can easily install any version of `kotlin_script` (linked with any
  kotlin version) with the following gradle task.
  
 ```
-./gradlew publishToMavenLocal
+v=1.4.10.0
+./gradlew jar sourcesJar dokkaJar copyDependencies
+
+# run install script with embedded kotlin_script installer
+./examples/install.kt build/libs/kotlin_script-${v}.jar
+
+# alternatively, compile and run install script manually
+./gradlew examplesClasses
+java -cp build/libs/kotlin_script-${v}.jar:build/classes/kotlin/examples InstallKt build/libs/kotlin_script-${v}.jar
 ```
 
 
@@ -32,7 +40,7 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.72.0
+v=1.4.10.0
 artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
 repo=${repo:-https://repo1.maven.org/maven2}
 if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
@@ -44,7 +52,7 @@ if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
     rm -f "$tmp_f"; exit 1
   fi
   case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "175648b97df5b0410c177a379f58aca8f029b3da705ecfda87b542133ba0ac2d "*)
+  "5c745d2793ee85fa929c76c02969dfb072c82b33fa833cced65571f506831b9b "*)
     mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
   *)
     echo "error: failed to validate kotlin_script" >&2
