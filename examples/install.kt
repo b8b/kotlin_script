@@ -108,14 +108,14 @@ fun main(args: Array<String>) {
     }
 
     val pom = ZipFile(mainJar.toFile()).use { z ->
-        z.getInputStream(z.getEntry("META-INF/maven/org.cikit.kotlin_script/kotlin_script/pom.xml")).use { `in` -> String(`in`.readBytes()) }
+        z.getInputStream(z.getEntry("META-INF/maven/org.cikit/kotlin_script/pom.xml")).use { `in` -> String(`in`.readBytes()) }
     }
 
     val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
     val kotlinScriptVersion = manifest.mainAttributes.getValue("Implementation-Version")
     val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
 
-    val repoKotlinScript = repo.resolve("org/cikit/kotlin_script/kotlin_script/$kotlinScriptVersion")
+    val repoKotlinScript = repo.resolve("org/cikit/kotlin_script/$kotlinScriptVersion")
     Files.createDirectories(repoKotlinScript)
 
     repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.pom").toFile().writeText(pom)
@@ -135,10 +135,10 @@ fun main(args: Array<String>) {
         Files.newBufferedWriter(scriptTgt).use { w ->
             r.useLines { lines ->
                 for (line in lines) {
-                    w.write(line.replace("@stdlib_ver@", kotlinVersion)
-                            .replace("@stdlib_sha256@", compilerLibDir.resolve("kotlin-stdlib.jar").sha256())
-                            .replace("@ks_jar_ver@", kotlinScriptVersion)
-                            .replace("@ks_jar_sha256@", mainJarTgt.sha256()))
+                    w.write(line.replace("@kotlin_stdlib_ver@", kotlinVersion)
+                            .replace("@kotlin_stdlib_dgst@", compilerLibDir.resolve("kotlin-stdlib.jar").sha256())
+                            .replace("@kotlin_script_jar_ver@", kotlinScriptVersion)
+                            .replace("@kotlin_script_jar_dgst@", mainJarTgt.sha256()))
                     w.write("${'\n'}")
                 }
             }

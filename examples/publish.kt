@@ -125,7 +125,7 @@ fun main(args: Array<String>) {
     )
 
     val repo = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
-    val subDir = "org/cikit/kotlin_script/kotlin_script/$v"
+    val subDir = "org/cikit/kotlin_script/$v"
 
     val libDir = Paths.get(System.getProperty("user.home"), ".m2", "repository", subDir)
     val filesToPublish = listOf(

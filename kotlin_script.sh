@@ -1,157 +1,12 @@
-: "${ks_home:="$HOME"/.kotlin_script}"
 : "${java_cmd:="java"}"
-: "${sha256_cmd:="openssl dgst -sha256 -r"}"
 : "${script_file:="$0"}"
 
-: "${repo:=https://repo1.maven.org/maven2}"
-: "${local_repo:="$HOME"/.m2/repository}"
+: "${K2_REPO:=https://repo1.maven.org/maven2}"
 
-if [ "${script_dir:="${script_file%/*}"}" = "$script_file" ]; then
-  script_dir=.
-fi
-script_name="${script_file##*/}"
-script_sha256="$(${sha256_cmd} < "$script_file")"
-script_sha256="${script_sha256%% *}"
-md_cache_dir="$ks_home"/cache-@ks_jar_ver@/"${script_sha256%??????????????????????????????????????????????????????????????}"
-md_cache="$md_cache_dir"/"${script_sha256#??}".metadata
+tmp_d=
+trap '[ x"$tmp_f" = x ] || rm -f "$tmp_f"; [ x"$tmp_d" = x ] || rm -Rf "$tmp_d"' EXIT
 
-parse_script_metadata()
-{
-  check_classpath=ok
-  while read -r line; do
-    case "$line" in
-    '///DEP='* | '///RDEP='*)
-      if ! [ -f "$local_repo"/"${line#*=}" ]; then
-        check_classpath=fail
-        return
-      fi
-      ;;
-    '///INC='*)
-      set -- "$@" "${line#///INC=}"
-      ;;
-    esac
-  done < "$md_cache"
-  if [ "$#" -gt 0 ]; then
-    chk="$script_sha256 *$script_name
-$(cd "$script_dir" && ${sha256_cmd} "$@")" || exit 1
-  else
-    chk="$script_sha256 *$script_name"
-  fi
-  target_sha256="$(${sha256_cmd} << __EOF__
-$chk
-
-__EOF__
-)" || exit 1
-  target_sha256="${target_sha256%% *}"
-  target="$ks_home"/cache-@ks_jar_ver@/"${target_sha256%??????????????????????????????????????????????????????????????}"/"${target_sha256#??}".jar
-}
-
-if [ -e "$md_cache" ]; then
-  parse_script_metadata
-  if [ "$check_classpath" = "ok" ] && [ -e "$target" ]; then
-    exec ${java_cmd} \
-           -Dkotlin_script.home="$ks_home" \
-           -Dkotlin_script.name="$script_file" \
-           -jar "$target" "$@"
-    exit 2
-  fi
-fi
-
-if [ x"${fetch_cmd:=}" = x ]; then
-  if fetch_s="$(command -v fetch) -aAqo" || \
-     fetch_s="$(command -v curl) -fSso"; then
-    fetch_cmd="$fetch_s"
-  fi
-fi
-
-do_fetch()
-{
-  dest="$1"
-  artifact="$2"
-  sha256="$3"
-
-  if [ -e "$local_repo"/"$artifact" ]; then
-    tmp_f="$(mktemp "$dest"~XXXXXXXXXXXXXXXX)" || exit 1
-    cp -f "$local_repo"/"$artifact" "$tmp_f" || exit 1
-    case "$(${sha256_cmd} < "$tmp_f")" in
-    "$sha256 "*)
-      mv -f "$tmp_f" "$dest" || exit 1
-      return
-      ;;
-    esac
-    echo "warning: failed to validate $local_repo/$artifact" >&2
-    if [ x"$fetch_cmd" = x ]; then
-      echo "error: no fetch tool available" >&2
-      exit 1
-    fi
-    if [ -t 2 ]; then
-      echo "fetching $repo/$artifact" >&2
-    fi
-    if ! ${fetch_cmd} "$tmp_f" "$repo/$artifact"; then
-      echo "error: failed to fetch $repo/$artifact" >&2
-      exit 1
-    fi
-    case "$(${sha256_cmd} < "$tmp_f")" in
-    "$sha256 "*)
-      mv -f "$tmp_f" "$dest" || exit 1
-      return
-      ;;
-    esac
-  else
-    if [ x"$fetch_cmd" = x ]; then
-      echo "error: no fetch tool available" >&2
-      exit 1
-    fi
-    tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-    if [ -t 2 ]; then
-      echo "fetching $repo/$artifact" >&2
-    fi
-    if ! ${fetch_cmd} "$tmp_f" "$repo/$artifact"; then
-      echo "error: failed to fetch $repo/$artifact" >&2
-      exit 1
-    fi
-    case "$(${sha256_cmd} < "$tmp_f")" in
-    "$sha256 "*)
-      cp -f "$tmp_f" "$dest"~"${tmp_f##*/}" || exit 1
-      if ! mv -f "$dest"~"${tmp_f##*/}" "$dest"; then
-        rm -f "$dest"~"${tmp_f##*/}"
-        mv -f "$tmp_f" "$local_repo"/"$artifact"
-        exit 1
-      else
-        mv -f "$tmp_f" "$local_repo"/"$artifact"
-      fi
-      return
-      ;;
-    esac
-  fi
-  echo "error: failed to validate $tmp_f" >&2
-  exit 1
-}
-
-tmp_f=
-trap '[ x"$tmp_f" = x ] || rm -f "$tmp_f"' EXIT
-
-if ! [ -e "$ks_home"/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar ]; then
-  mkdir -p "$ks_home"/kotlin-compiler-@stdlib_ver@/kotlinc/lib \
-      "$local_repo"/org/jetbrains/kotlin/kotlin-stdlib/@stdlib_ver@
-  do_fetch "$ks_home"/kotlin-compiler-@stdlib_ver@/kotlinc/lib/kotlin-stdlib.jar \
-           org/jetbrains/kotlin/kotlin-stdlib/@stdlib_ver@/kotlin-stdlib-@stdlib_ver@.jar \
-           @stdlib_sha256@
-fi
-
-mkdir -p "$ks_home"/cache-@ks_jar_ver@/work
-
-if ! [ -e "$ks_home"/kotlin_script-@ks_jar_ver@.jar ]; then
-  mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/@ks_jar_ver@
-  do_fetch "$ks_home"/kotlin_script-@ks_jar_ver@.jar \
-           org/cikit/kotlin_script/kotlin_script/@ks_jar_ver@/kotlin_script-@ks_jar_ver@.jar \
-           @ks_jar_sha256@
-fi
-
-if ! tmp_f="$(mktemp "$ks_home"/cache-@ks_jar_ver@/work/XXXXXXXXXXXXXXXX)"; then
-  exit 1
-fi
-
+kotlin_script_flags=
 case "$-" in
 *x*)
   kotlin_script_flags="$kotlin_script_flags -x"
@@ -162,68 +17,196 @@ if [ -t 2 ]; then
   kotlin_script_flags="$kotlin_script_flags -P"
 fi
 
-if ! ${java_cmd} -Dmaven.repo.url="$repo" \
-                 -Dmaven.repo.local="$local_repo" \
-                 -Dkotlin_script.home="$ks_home" \
-                 -jar "$ks_home"/kotlin_script-@ks_jar_ver@.jar \
-                 ${kotlin_script_flags} \
-                 -M "$tmp_f" \
-                 -d "$tmp_f".jar \
-                 "$script_file"; then
-  rm -f "$tmp_f" "$tmp_f".jar
+if [ x"${dgst_cmd:="$sha256_cmd"}" = x ] && \
+   ! dgst_cmd="$(command -v sha256sum)" && \
+   ! dgst_cmd="$(command -v openssl) dgst -sha256 -r"; then
+  echo "error: no sha256 tool available" >&2
   exit 1
 fi
 
-chk=
-inc=
-while read -r line; do
-  case "$line" in
-  '///INC='*)
-    inc="${line#///INC=}"
-    ;;
-  '///CHK=sha256='*)
-    sha256="${line#///CHK=sha256=}"
-    if [ x"$inc" = x ]; then
-      script_sha256="$sha256"
-      md_cache_dir="$ks_home"/cache-@ks_jar_ver@/"${script_sha256%??????????????????????????????????????????????????????????????}"
-      md_cache="$md_cache_dir"/"${script_sha256#??}".metadata
-      chk="${chk}$sha256 *$script_name
-"
-    else
-      chk="${chk}$sha256 *$inc
-"
+if [ "${script_dir:="${script_file%/*}"}" = "$script_file" ]; then
+  script_dir=.
+fi
+script_name="${script_file##*/}"
+
+cache_dir="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/org/cikit/kotlin_script_cache/@kotlin_script_jar_ver@
+
+if [ -d "$cache_dir" ]; then
+  # lookup script metadata by script dgst
+  if ! script_dgst_out="$(${dgst_cmd} < "$script_file")"; then
+    echo "error calculating dgst of $script_file: $dgst_cmd terminated abnormally" >&2
+    exit 1
+  fi
+  script_dgst="${script_dgst_out%%[^0-9a-f]*}"
+  case "$script_dgst" in
+  ????????????????????????????????????????????????????????????????)
+    md_cache=kotlin_script_cache-@kotlin_script_jar_ver@-sha256="$script_dgst".metadata
+    if [ -r "$cache_dir"/"$md_cache" ]; then
+      # read script metadata from cache
+      check_classpath=
+      check_inc=
+      while read -r line; do
+        case "$line" in
+        '///DEP='* | '///RDEP='*)
+          if ! [ -r "${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"${line#*=}" ]; then
+            check_classpath=fail
+            break
+          fi
+          ;;
+        '///INC='*)
+          inc="${line#///INC=}"
+          if ! inc_dgst_out="$(cd "$script_dir" && ${dgst_cmd} < "$inc")"; then
+            check_inc=fail
+            break
+          fi
+          inc_dgst="${inc_dgst_out%%[^0-9a-f]*}"
+          case "$inc_dgst" in
+          ????????????????????????????????????????????????????????????????)
+            check_inc="$check_inc
+sha256=$inc_dgst $inc"
+            ;;
+          *)
+            check_inc=fail
+            break
+            ;;
+          esac
+          ;;
+        esac
+      done < "$cache_dir"/"$md_cache"
+      if [ x"$check_classpath" = x ] && [ "$check_inc" != "fail" ]; then
+        if [ x"$check_inc" = x ]; then
+          target_dgst="$script_dgst"
+        else
+          target_dgst_out="$(${dgst_cmd} << __EOF__
+sha256=$script_dgst $script_name$check_inc
+__EOF__
+)" || exit 1
+          target_dgst="${target_dgst_out%%[^0-9a-f]*}"
+        fi
+        case "$target_dgst" in
+        ????????????????????????????????????????????????????????????????)
+          # lookup jar by script+inc dgst
+          target=kotlin_script_cache-@kotlin_script_jar_ver@-sha256="$target_dgst".jar
+          if [ -r "$cache_dir"/"$target" ]; then
+            if ! [ x"$tmp_f" = x ]; then
+              rm -f "$fmp_f"
+              tmp_f=
+            fi
+
+            if ! [ x"$tmp_d" = x ]; then
+              rm -Rf "$tmp_d"
+              tmp_d=
+            fi
+
+            exec $java_cmd \
+                   -Dkotlin_script.name="$script_file" \
+                   -Dkotlin_script.flags="$kotlin_script_flags" \
+                   -jar "$cache_dir"/"$target" "$@"
+            exit 2
+          fi
+          ;;
+        esac
+      fi
     fi
     ;;
   esac
-done < "$tmp_f"
+fi
 
-target_sha256="$(${sha256_cmd} << __EOF__
-$chk
-__EOF__
-)" || exit 1
-target_sha256="${target_sha256%% *}"
-target_dir="$ks_home"/cache-@ks_jar_ver@/"${target_sha256%??????????????????????????????????????????????????????????????}"
-target="$target_dir"/"${target_sha256#??}".jar
+if [ x"${fetch_cmd:=}" = x ]; then
+  if fetch="$(command -v fetch) --no-verify-peer -aAqo" || \
+     fetch="$(command -v wget) --no-check-certificate -qO" || \
+     fetch="$(command -v curl) -kfLSso"; then
+    fetch_cmd="$fetch"
+  fi
+fi
 
-if ! mkdir -p "$target_dir" "$md_cache_dir"; then
-  rm -f "$tmp_f" "$tmp_f".jar
+do_fetch()
+{
+  dest="$1"
+  p="$2"
+  dgst="$3"
+
+  if [ -r "$K2_LOCAL_MIRROR"/"$p" ]; then
+    cp -f "$K2_LOCAL_MIRROR"/"$p" "$dest"
+    case "$($dgst_cmd < "$dest")" in
+    "$dgst "*)
+      return
+      ;;
+    esac
+  fi
+  if [ -t 2 ]; then
+    echo "fetching $K2_REPO/$p" >&2
+  fi
+  if ! $fetch_cmd "$dest" "$K2_REPO/$p"; then
+    echo "error: failed to fetch $K2_REPO/$p" >&2
+    exit 1
+  fi
+  case "$($dgst_cmd < "$dest")" in
+  "$dgst "*)
+    return
+    ;;
+  esac
+  echo "error: failed to validate $K2_REPO/$p" >&2
+  exit 1
+}
+
+tmp_d="$(mktemp -d)" || exit 1
+
+kotlin_script_jar=org/cikit/kotlin_script/@kotlin_script_jar_ver@/kotlin_script-@kotlin_script_jar_ver@.jar
+kotlin_stdlib_jar=org/jetbrains/kotlin/kotlin-stdlib/@kotlin_stdlib_ver@/kotlin-stdlib-@kotlin_stdlib_ver@.jar
+
+if [ -r "${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$kotlin_script_jar" ] && \
+   [ -r "${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$kotlin_stdlib_jar" ]; then
+  kotlin_script_jar="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$kotlin_script_jar"
+  kotlin_stdlib_jar="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$kotlin_stdlib_jar"
+else
+  if [ x"$fetch_cmd" = x ]; then
+    echo "error: no fetch tool available" >&2
+    exit 1
+  fi
+  mkdir -p "$tmp_d"/"${kotlin_script_jar%/*}" "$tmp_d"/"${kotlin_stdlib_jar%/*}"
+  do_fetch "$tmp_d"/"$kotlin_script_jar" "$kotlin_script_jar" @kotlin_script_jar_dgst@
+  do_fetch "$tmp_d"/"$kotlin_stdlib_jar" "$kotlin_stdlib_jar" @kotlin_stdlib_dgst@
+  kotlin_script_jar="$tmp_d"/"$kotlin_script_jar"
+  kotlin_stdlib_jar="$tmp_d"/"$kotlin_stdlib_jar"
+fi
+
+if ! target="$($java_cmd -jar "$kotlin_script_jar" \
+                         ${kotlin_script_flags} \
+                         --install-kotlin-script-sh="$kotlin_script_sh" \
+                         --install-kotlin-script-jar="$kotlin_script_jar" \
+                         --install-kotlin-stdlib-jar="$kotlin_stdlib_jar" \
+                         -M "$tmp_d"/script.metadata \
+                         "$script_file")"; then
   exit 1
 fi
 
-if ! mv -f "$tmp_f" "$md_cache"; then
-  rm -f "$tmp_f" "$tmp_f".jar
-  exit 1
+target_repo=
+target_jar=
+while read -r line; do
+  case "$line" in
+  ///REPO=*)
+    target_repo="${line#///REPO=}"
+    ;;
+  ///JAR_CACHE_PATH=*)
+    target_jar="${line#///JAR_CACHE_PATH=}"
+    ;;
+  esac
+done < "$tmp_d"/script.metadata
+
+if ! [ x"$tmp_f" = x ]; then
+  rm -f "$fmp_f"
+  tmp_f=
 fi
 
-if ! mv -f "$tmp_f".jar "$target"; then
-  rm -f "$tmp_f" "$tmp_f".jar
-  exit 1
+if ! [ x"$tmp_d" = x ]; then
+  rm -Rf "$tmp_d"
+  tmp_d=
 fi
 
-exec ${java_cmd} \
-       -Dkotlin_script.home="$ks_home" \
+exec $java_cmd \
        -Dkotlin_script.name="$script_file" \
        -Dkotlin_script.flags="$kotlin_script_flags" \
-       -jar "$target" \
-       "$@"
+       -jar "$target_repo"/"$target_jar" "$@"
+
 exit 2

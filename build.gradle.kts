@@ -10,8 +10,8 @@ plugins {
     `maven-publish`
 }
 
-group = "org.cikit.kotlin_script"
-version = "1.4.10.0"
+group = "org.cikit"
+version = "1.4.10.1"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_7
@@ -89,7 +89,8 @@ tasks.named<Jar>("jar") {
         attributes["Implementation-Version"] = version
         attributes["Implementation-Vendor"] = "cikit.org"
         attributes["Main-Class"] = "kotlin_script.KotlinScript"
-        attributes["Class-Path"] = "kotlin-compiler-${getKotlinPluginVersion()}/kotlinc/lib/kotlin-stdlib.jar"
+        attributes["Class-Path"] = "../../../jetbrains/kotlin/kotlin-stdlib/${getKotlinPluginVersion()}/kotlin-stdlib-${getKotlinPluginVersion()}.jar"
+        attributes["Kotlin-Script-Version"] = version
         attributes["Kotlin-Compiler-Version"] = getKotlinPluginVersion()
         attributes["Kotlin-Compiler-Class-Path"] = compilerClassPath.joinToString(" ") { a ->
             "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +
@@ -139,7 +140,7 @@ publishing {
             pom {
                 name.set("kotlin_script")
                 description.set("Lightweight build system for kotlin/jvm")
-                url.set("https://github.com/b8b/kotlin_script.git")
+                url.set("https://github.com/b8b/kotlin_script")
                 licenses {
                     license {
                         name.set("The Apache License, Version 2.0")

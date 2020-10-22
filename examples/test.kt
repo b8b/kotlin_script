@@ -1,7 +1,7 @@
 #!/bin/sh
 
-/*__kotlin_script_installer__/ 2>/dev/null
-#
+/*/ __kotlin_script_installer__ 2>&-
+# vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
 #   | | _____ | |_| |_ _ __    ___  ___ _ __ _ _ __ | |_
@@ -10,30 +10,27 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.4.10.0
-artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
-if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
-  fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
-  mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/"$v"
-  tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" \
-      "${repo:=https://repo1.maven.org/maven2}"/"$artifact"; then
-    echo "error: failed to fetch kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1
-  fi
-  case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "5c745d2793ee85fa929c76c02969dfb072c82b33fa833cced65571f506831b9b "*)
-    mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
+v=1.4.10.1
+p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
+kotlin_script_sh="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+if [ -r "$kotlin_script_sh" ]; then tmp_f=; else
+  tmp_f="$(mktemp)" || exit 1
+  fetch_cmd="$(command -v curl) -kfLSso" || \
+    fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
+    fetch_cmd="wget --no-check-certificate -qO"
+  if ! $fetch_cmd "$tmp_f" "${K2_REPO:-https://repo1.maven.org/maven2}"/"$p"
+  then echo "failed to fetch kotlin_script.sh" >&2; exit 1; fi
+  dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
+  case "$($dgst_cmd < "$tmp_f")" in
+  "a2d49952ba934c6e37a1e08bf02c1079b4ab08109138e587f47522e804187a5a "*)
+    kotlin_script_sh="$tmp_f";;
   *)
-    echo "error: failed to validate kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1 ;;
+    echo "error: failed to fetch kotlin_script.sh" >&2
+    rm -f "$tmp_f"; exit 1;;
   esac
 fi
-. "$local_repo"/"$artifact"
-exit 2
+. "$kotlin_script_sh"; exit 2
 */
-
-///MAIN=TestKt
 
 import java.io.*
 import java.nio.file.*
@@ -63,14 +60,22 @@ private fun cleanup(dir: Path) {
     })
 }
 
-fun main(args: Array<String>) {
-    val v = args.singleOrNull()?.removePrefix("-v")
-            ?: error("usage: test.kt -v<version>")
+fun main() {
+    val readme = File("README.md").readText()
+    val embeddedInstaller = Regex(".*```Sh(.*?__kotlin_script_installer__.*?)```.*", RegexOption.DOT_MATCHES_ALL)
+            .matchEntire(readme)?.groupValues?.get(1)?.trim()
+            ?: error("error extracting embedded installer from README.md")
+
+    val v = Regex(".*\\nv=(.*?)\\n.*", RegexOption.DOT_MATCHES_ALL)
+            .matchEntire(embeddedInstaller)?.groupValues?.get(1)?.trim()
+            ?: error("error extracting kotlin_script version from embedded installer in README.md")
+
+    println("--> running tests for kotlin_script-$v")
 
     val homeDir = File(System.getProperty("user.home"))
     val realLocalRepo = File(homeDir, ".m2/repository")
 
-    val libsDir = File(realLocalRepo, "org/cikit/kotlin_script/kotlin_script/$v")
+    val libsDir = File(realLocalRepo, "org/cikit/kotlin_script/$v")
 
     //+test.kt:3>
     val locPattern = "^\\+(.*?):(\\d+)> .*\$".toRegex()
@@ -103,16 +108,14 @@ fun main(args: Array<String>) {
     val repo = File(baseDir, "repo")
     val binDir = File(baseDir, "bin")
     val localRepo = File(baseDir, "local_repo")
-    val ksHome = File(baseDir, "ks_home")
+    val cache = File(localRepo, "org/cikit/kotlin_script_cache")
     val linesCovered = mutableSetOf<Pair<String, Int>>()
 
     val env = arrayOf(
             "PATH=${binDir.absolutePath}",
-            "repo=${repo.toURI()}",
-            "local_repo=${baseDir.toPath().toAbsolutePath().relativize(
-                    localRepo.toPath().toAbsolutePath())}",
-            "ks_home=${baseDir.toPath().toAbsolutePath().relativize(
-                    ksHome.toPath().toAbsolutePath())}"
+            "K2_REPO=${repo.toURI()}",
+            "K2_LOCAL_REPO=${baseDir.toPath().toAbsolutePath().relativize(
+                    localRepo.toPath().toAbsolutePath())}"
     )
 
     val zsh = ProcessBuilder("sh", "-c", "command -v zsh").let { pb ->
@@ -183,15 +186,11 @@ fun main(args: Array<String>) {
         if (localRepo.exists()) cleanup(localRepo.toPath())
     }
 
-    fun setupKsHome() {
-        if (ksHome.exists()) cleanup(ksHome.toPath())
-    }
-
     fun setupRepo() {
         if (repo.exists()) cleanup(repo.toPath())
 
         //copy kotlin_script
-        val ksSubdir = File(repo, "org/cikit/kotlin_script/kotlin_script/$v")
+        val ksSubdir = File(repo, "org/cikit/kotlin_script/$v")
         Files.createDirectories(ksSubdir.toPath())
         Files.copy(File(libsDir, "kotlin_script-$v.sh").toPath(),
                 File(ksSubdir, "kotlin_script-$v.sh").toPath(),
@@ -232,40 +231,8 @@ fun main(args: Array<String>) {
             w.write("fun myFunc() = 1\n")
         }
         FileWriter(File(baseDir, "test.kt")).use { w ->
-            w.write("""#!/bin/sh
-                    |
-                    |/*/ __kotlin_script_installer__ 2>/dev/null
-                    |#
-                    |#    _         _   _ _                       _       _
-                    |#   | |       | | | (_)                     (_)     | |
-                    |#   | | _____ | |_| |_ _ __    ___  ___ _ __ _ _ __ | |_
-                    |#   | |/ / _ \| __| | | '_ \  / __|/ __| '__| | '_ \| __|
-                    |#   |   < (_) | |_| | | | | | \__ \ (__| |  | | |_) | |_
-                    |#   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
-                    |#                         ______              | |
-                    |#                        |______|             |_|
-                    |v=$v
-                    |artifact=org/cikit/kotlin_script/kotlin_script/"${'$'}v"/kotlin_script-"${'$'}v".sh
-                    |if ! [ -e "${'$'}{local_repo:=${'$'}HOME/.m2/repository}"/"${'$'}artifact" ]; then
-                    |  fetch_s="${'$'}(command -v fetch) -aAqo" || fetch_s="${'$'}(command -v curl) -fSso"
-                    |  mkdir -p "${'$'}local_repo"/org/cikit/kotlin_script/kotlin_script/"${'$'}v"
-                    |  tmp_f="${'$'}(mktemp "${'$'}local_repo"/"${'$'}artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-                    |  if ! ${'$'}{fetch_cmd:="${'$'}fetch_s"} "${'$'}tmp_f" \
-                    |      "${'$'}{repo:=https://repo1.maven.org/maven2}"/"${'$'}artifact"; then
-                    |    echo "error: failed to fetch kotlin_script" >&2
-                    |    rm -f "${'$'}tmp_f"; exit 1
-                    |  fi
-                    |  case "${'$'}(openssl dgst -sha256 -r < "${'$'}tmp_f")" in
-                    |  "${kotlinScript.sha256} "*)
-                    |    mv -f "${'$'}tmp_f" "${'$'}local_repo"/"${'$'}artifact" ;;
-                    |  *)
-                    |    echo "error: failed to validate kotlin_script" >&2
-                    |    rm -f "${'$'}tmp_f"; exit 1 ;;
-                    |  esac
-                    |fi
-                    |. "${'$'}local_repo"/"${'$'}artifact"
-                    |exit 2
-                    |*/
+            w.write(embeddedInstaller)
+            w.write("""
                     |
                     |///INC=inc.kt
                     |
@@ -292,15 +259,13 @@ fun main(args: Array<String>) {
             for (line in lines) {
                 locPattern.matchEntire(line)?.let { mr ->
                     val (name, ln) = mr.destructured
-                    when (val offs = kotlinScript.shellFunctions[name]) {
-                        null -> linesCovered.add(
-                                File(name).name to ln.toInt()
-                        )
-                        else -> linesCovered.add(
-                                "kotlin_script-$v.sh" to
-                                        (ln.toInt() + offs)
-                        )
-                    }
+                    val offs = kotlinScript.shellFunctions[name]
+                    val shName = "kotlin_script-$v.sh"
+                    linesCovered.add(when {
+                        offs != null -> shName to (ln.toInt() + offs)
+                        "tmp" in name -> shName to ln.toInt()
+                        else -> name to ln.toInt()
+                    })
                     Unit
                 } ?: result.add(line)
             }
@@ -315,7 +280,6 @@ fun main(args: Array<String>) {
         setupRepo()
         setupBin()
         setupLocalRepo()
-        setupKsHome()
     }
 
     fun reportCoverage() {
@@ -327,7 +291,7 @@ fun main(args: Array<String>) {
                     lines.toList()
                 }
             }
-            FileWriter(File(baseDir, "$fileName.cov")).use { w ->
+            FileWriter(File(baseDir, "${fileName}.cov")).use { w ->
                 lines.forEachIndexed { index, line ->
                     val ln = fileName to index.inc()
                     if (linesCovered.contains(ln) ||
@@ -420,27 +384,29 @@ fun main(args: Array<String>) {
 
     test("testCopyFromLocalRepo") {
         compileOk()
-        cleanup(ksHome.toPath())
+        cleanup(cache.toPath())
         runScript("test_copy_from_local_repo.out",
                 "env", *env, "script_file=test.kt",
                 zsh, "-xy", "test.kt")
     }
 
-    test("testBadLocalRepo") {
+    test("testBadLocalRepo", IllegalStateException::class) {
         compileOk()
-        cleanup(ksHome.toPath())
-        val subDir = "org/cikit/kotlin_script/kotlin_script/$v"
-        FileOutputStream(File(localRepo, "$subDir/kotlin_script-$v.jar"))
-                .use { out -> out.write("broken!".toByteArray()) }
+        cleanup(cache.toPath())
+        val f = File(localRepo, "org/cikit/kotlin_script/$v/kotlin_script-$v.jar")
+        Files.createDirectories(f.toPath().parent)
+        FileOutputStream(f).use { out -> out.write("broken!".toByteArray()) }
         runScript("test_bad_local_repo.out",
                 "env", *env, "script_file=test.kt",
                 zsh, "-xy", "test.kt")
     }
+exitProcess(1)
+    setupLocalRepo()
 
     test("testNoFetchTool", IllegalStateException::class) {
         compileOk()
-        cleanup(ksHome.toPath())
-        val subDir = "org/cikit/kotlin_script/kotlin_script/$v"
+        cleanup(cache.toPath())
+        val subDir = "org/cikit/kotlin_script/$v"
         listOf(
                 File(localRepo, "$subDir/kotlin_script-$v.jar"),
                 File(binDir, "fetch"),

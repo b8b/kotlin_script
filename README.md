@@ -10,7 +10,7 @@ You can easily install any version of `kotlin_script` (linked with any
  kotlin version) with the following gradle task.
  
 ```
-v=1.4.10.0
+v=1.4.10.1
 ./gradlew jar sourcesJar dokkaJar copyDependencies
 
 # run install script with embedded kotlin_script installer
@@ -30,7 +30,7 @@ This version of `kotlin_script` is used by embedding
 ```Sh
 #!/bin/sh
 
-/*__kotlin_script_installer__/ 2>&-
+/*/ __kotlin_script_installer__ 2>&-
 # vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
@@ -40,27 +40,26 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.4.10.0
-artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
-repo=${repo:-https://repo1.maven.org/maven2}
-if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
-  fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
-  mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/"$v"
-  tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" "$repo"/"$artifact"; then
-    echo "error: failed to fetch kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1
-  fi
-  case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "5c745d2793ee85fa929c76c02969dfb072c82b33fa833cced65571f506831b9b "*)
-    mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
+v=1.4.10.1
+p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
+kotlin_script_sh="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+if [ -r "$kotlin_script_sh" ]; then tmp_f=; else
+  tmp_f="$(mktemp)" || exit 1
+  fetch_cmd="$(command -v curl) -kfLSso" || \
+    fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
+    fetch_cmd="wget --no-check-certificate -qO"
+  if ! $fetch_cmd "$tmp_f" "${K2_REPO:-https://repo1.maven.org/maven2}"/"$p"
+  then echo "failed to fetch kotlin_script.sh" >&2; exit 1; fi
+  dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
+  case "$($dgst_cmd < "$tmp_f")" in
+  "a2d49952ba934c6e37a1e08bf02c1079b4ab08109138e587f47522e804187a5a "*)
+    kotlin_script_sh="$tmp_f";;
   *)
-    echo "error: failed to validate kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1 ;;
+    echo "error: failed to fetch kotlin_script.sh" >&2
+    rm -f "$tmp_f"; exit 1;;
   esac
 fi
-. "$local_repo"/"$artifact"
-exit 2
+. "$kotlin_script_sh"; exit 2
 */
 ```
 
@@ -78,15 +77,22 @@ Further invocations will compare a checksum of the file against the cached
 version to determine if recompilation is required.
 
 
-## Shell variables
+## Variables
 
 Some shell variables can be customized in the embedded installer.
 
-* `repo` - maven2 repository url to fetch bootstrap items from
-* `local_repo` - local maven2 repository to fetch items into
-* `ks_home` - installation path of `kotlin_script` (default `~/.kotlin_script`)
+* `tmp_f` - path to temporary file to be cleaned up
+* `kotlin_script_sh` - path to kotlin_script-XX.sh
+* `fetch_cmd` - command to fetch files
+* `dgst_cmd` - command to calculate sha256 checksum of stdin
 * `java_cmd` - command to start java vm (default `java`)
+* `script_file` - path to executed script (default `$0`)
 
+Environment variables
+
+* `K2_REPO` - maven2 repository url to fetch missing dependency artifacts
+* `K2_LOCAL_MIRROR` - read-only local maven2 repository
+* `K2_LOCAL_REPO` - local maven2 repository populated with dependency artifacts
 
 ## Metadata
 
@@ -120,7 +126,5 @@ format.
 * Split code into separate "up-to-date check" and compiler (done)
 * Implement up-to-date check in C for reasonable startup times (done in sh)
 * Use a reasonable default for `///MAIN=` (done)
-* Automatic upgrade
-* Support compiling snippets from STDIN or command line arguments
 * Use annotations for meta data in source files
-* Implement dependency isolation mode
+* Support for kts scripts
