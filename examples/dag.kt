@@ -35,19 +35,37 @@ exit 2
 
 import java.util.*
 import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class Task<T> private constructor(
+sealed class Task<T>(
         private val dependency: Dependency<T>,
-        val dependencies: List<Task<*>>,
-        val block: Dependency.ExecutionContext.() -> T
+        val dependencies: List<Task<*>>
 ) {
-    class Dependency<T> private constructor(dependencies: List<Task<*>>,
-                                            block: ExecutionContext.() -> T) {
+    class DoingNothing internal constructor(
+            dependency: Dependency<Unit>,
+            dependencies: List<Task<*>>
+    ) : Task<Unit>(dependency, dependencies)
 
-        private val task: Task<T> = Task(this, dependencies, block)
+    class Running internal constructor(
+            dependency: Dependency<Unit>,
+            dependencies: List<Task<*>>,
+            val runnable: Runnable
+    ) : Task<Unit>(dependency, dependencies)
+
+    class CallingLambda<T> internal constructor(
+            dependency: Dependency<T>,
+            dependencies: List<Task<*>>,
+            val block: () -> T
+    ) : Task<T>(dependency, dependencies)
+
+    class ApplyingLambda<T> internal constructor(
+            dependency: Dependency<T>,
+            dependencies: List<Task<*>>,
+            val block: Dependency.ExecutionContext.() -> T
+    ): Task<T>(dependency, dependencies)
+
+    class Dependency<T> private constructor() {
 
         class DefinitionContext private constructor() {
             companion object {
@@ -62,15 +80,24 @@ class Task<T> private constructor(
             fun <T> dependency(task: Task<T>) =
                     task.dependency.also { dependencies.add(task) }
 
+            fun doingNothing() =
+                    DoingNothing(Dependency(), dependencies)
+
+            fun running(runnable: Runnable) =
+                    Running(Dependency(), dependencies, runnable)
+
+            fun <T> calling(block: () -> T) =
+                    CallingLambda(Dependency(), dependencies, block)
+
             fun <T> executing(block: ExecutionContext.() -> T): Task<T> {
-                return Dependency(dependencies, block).task
+                return ApplyingLambda(Dependency(), dependencies, block)
             }
 
-            fun TODO(): Task<Unit> = executing {
+            fun <T> TODO(): Task<T> = executing {
                 kotlin.TODO()
             }
 
-            fun TODO(reason: String): Task<Unit> = executing {
+            fun <T> TODO(reason: String): Task<T> = executing {
                 kotlin.TODO(reason)
             }
         }
@@ -82,9 +109,16 @@ class Task<T> private constructor(
             )
             fun <T> dependency(task: Task<T>): Nothing =
                     error("cannot declare dependency in ExecutionContext")
+
+            fun <T> value(dependency: Dependency<T>): T =
+                    this@ExecutionContext[dependency]
+
             val <T> Dependency<T>.value: T
-                get() = this@ExecutionContext[task]
-            protected abstract operator fun <T> get(task: Task<T>): T
+                get() = this@ExecutionContext[this]
+
+            protected fun <T> Task<T>.asDependency(): Dependency<T> = this.dependency
+
+            protected abstract operator fun <T> get(dependency: Dependency<T>): T
         }
     }
 }
@@ -93,9 +127,7 @@ fun <T> task(block: Task.Dependency.DefinitionContext.() -> Task<T>): Task<T> {
     return Task.Dependency.DefinitionContext.defineTask(block)
 }
 
-private val NOOP_TASK = task {
-    executing {}
-}
+private val NOOP_TASK = task { doingNothing() }
 
 fun aggregatorTask(vararg dependency: Task<*>): Task<Unit> {
     return if (dependency.isEmpty()) {
@@ -103,21 +135,17 @@ fun aggregatorTask(vararg dependency: Task<*>): Task<Unit> {
     } else {
         task {
             for (d in dependency) dependency(d)
-            executing {}
+            doingNothing()
         }
     }
 }
 
 fun <T> independentTask(block: () -> T): Task<T> = task {
-    executing { block() }
-}
-
-fun <T> independentTask(block: Callable<T>): Task<T> = task {
-    executing { block.call() }
+    calling(block)
 }
 
 fun independentTask(block: Runnable): Task<Unit> = task {
-    executing { block.run() }
+    running(block)
 }
 
 sealed class ExecutionState<T> {
@@ -127,36 +155,43 @@ sealed class ExecutionState<T> {
     class Succeeded<T>(val value: T) : ExecutionState<T>()
 }
 
-class SkippedExecutionException : Exception("Unable to execute task: dependent task(s) failed")
+class SkippedExecutionException
+    : Exception("Unable to execute task: dependent task(s) failed")
 
-class TaskExecutor(val executorService: ExecutorService,
-                   val concurrency: Int = -1) : Task.Dependency.ExecutionContext() {
+class TaskExecutor(
+        val executorService: ExecutorService,
+        val concurrency: Int = -1
+) : Task.Dependency.ExecutionContext() {
 
-    private val results = IdentityHashMap<Task<*>, ExecutionState<*>>()
+    private val results =
+            IdentityHashMap<Task.Dependency<*>, ExecutionState<*>>()
+
     private var submitted = 0
 
     @Suppress("UNCHECKED_CAST")
-    override operator fun <T> get(task: Task<T>): T = when (val result = results[task]) {
-        is ExecutionState.Succeeded<*> -> result.value as T
-        else -> throw IllegalStateException()
+    override operator fun <T> get(dependency: Task.Dependency<T>): T {
+        return when (val result = results[dependency]) {
+            is ExecutionState.Succeeded<*> -> result.value as T
+            else -> throw IllegalStateException()
+        }
     }
 
-    private fun <T> findExecutableTasks(task: Task<T>): List<Task<*>> {
-        val myState: ExecutionState<*>? = results[task]
-        if (myState != null) return emptyList()
+    private fun <T> findExecutableTasks(task: Task<T>): Sequence<Task<*>> {
+        val myState: ExecutionState<*>? = results[task.asDependency()]
+        if (myState != null) return emptySequence()
         val ready = task.dependencies.none { d ->
-            when (results[d]) {
+            when (results[d.asDependency()]) {
                 null, is ExecutionState.Submitted -> true
                 else -> false
             }
         }
         if (ready) {
-            return listOf(task)
+            return sequenceOf(task)
         }
-        return task.dependencies.flatMap { d ->
-            when (results[d]) {
+        return task.dependencies.asSequence().flatMap { d ->
+            when (results[d.asDependency()]) {
                 null -> findExecutableTasks(d)
-                else -> emptyList()
+                else -> emptySequence()
             }
         }
     }
@@ -164,26 +199,32 @@ class TaskExecutor(val executorService: ExecutorService,
     private fun submit(task: Task<*>, resultReceiver: ArrayBlockingQueue<ExecutionState<*>>) {
         synchronized(results) {
             for (t in findExecutableTasks(task)) {
-                if (results.containsKey(t)) continue
+                if (results.containsKey(t.asDependency())) continue
                 if (concurrency in 1..submitted) break
                 executorService.submit {
                     val ready = synchronized(results) {
                         t.dependencies.all { d ->
-                            results[d] is ExecutionState.Succeeded<*>
+                            results[d.asDependency()] is ExecutionState.Succeeded<*>
                         }
                     }
-                    val result = if (!ready) {
-                        ExecutionState.Skipped
-                    } else {
-                        try {
-                            ExecutionState.Succeeded(t.block(this))
-                        } catch (ex: Throwable) {
-                            ExecutionState.Failed(ex)
+                    val result = try {
+                        if (!ready) {
+                            ExecutionState.Skipped
+                        } else {
+                            val value = when (t) {
+                                is Task.DoingNothing -> Unit
+                                is Task.Running -> t.runnable.run()
+                                is Task.CallingLambda<*> -> t.block()
+                                is Task.ApplyingLambda<*> -> t.block(this)
+                            }
+                            ExecutionState.Succeeded(value)
                         }
+                    } catch (ex: Throwable) {
+                        ExecutionState.Failed(ex)
                     }
                     synchronized(results) {
                         //FIXME should be in finally block
-                        results[t] = result
+                        results[t.asDependency()] = result
                         submitted--
                         if (task == t) {
                             resultReceiver.put(result)
@@ -192,23 +233,23 @@ class TaskExecutor(val executorService: ExecutorService,
                         }
                     }
                 }
-                results[t] = ExecutionState.Submitted
+                results[t.asDependency()] = ExecutionState.Submitted
                 submitted++
             }
         }
     }
 
-    private fun SkippedExecutionException.addSuppressed(t: Task<*>) {
+    private fun collectExceptions(list: IdentityHashMap<Task<*>, Throwable>, t: Task<*>) {
         for (d in t.dependencies) {
-            when (val result = results[d]) {
-                is ExecutionState.Failed -> addSuppressed(result.exception)
-                is ExecutionState.Skipped -> addSuppressed(d)
+            when (val result = results[d.asDependency()]) {
+                is ExecutionState.Failed -> list[d] = result.exception
+                is ExecutionState.Skipped -> collectExceptions(list, d)
             }
         }
     }
 
     fun <T> execute(task: Task<T>): T {
-        val result = results[task]
+        val result = results[task.asDependency()]
                 ?: ArrayBlockingQueue<ExecutionState<*>>(1)
                         .also { q -> submit(task, q) }
                         .take()
@@ -218,8 +259,14 @@ class TaskExecutor(val executorService: ExecutorService,
                 return result.value as T
             }
             is ExecutionState.Failed -> throw result.exception
-            is ExecutionState.Skipped -> throw SkippedExecutionException().also { ex ->
-                ex.addSuppressed(task)
+            is ExecutionState.Skipped -> {
+                val list = IdentityHashMap<Task<*>, Throwable>()
+                collectExceptions(list, task)
+                val ex = SkippedExecutionException()
+                for (suppressed in list.values) {
+                    if (suppressed != null) ex.addSuppressed(suppressed)
+                }
+                throw ex
             }
             else -> throw IllegalStateException()
         }
@@ -228,26 +275,20 @@ class TaskExecutor(val executorService: ExecutorService,
 }
 
 fun main() {
-    val task1 = task {
-        executing {
-            println("executing task1")
-            Thread.sleep(1000L)
-            2
-        }
+    val task1 = independentTask {
+        println("executing task1")
+        Thread.sleep(1000L)
+        2
     }
-    val failingTask = task {
-        executing {
-            println("executing failing task")
-            Thread.sleep(1000L)
-            if (true) error("1234")
-        }
-    }
-    val failingTask2 = task {
-        executing {
-            println("executing failing task 2")
-            Thread.sleep(1000L)
-            if (true) error("5678")
-        }
+    val failingTask = independentTask(Runnable {
+        println("executing failing task")
+        Thread.sleep(1000L)
+        if (true) error("1234")
+    })
+    val failingTask2 = independentTask {
+        println("executing failing task 2")
+        Thread.sleep(1000L)
+        if (true) error("5678")
     }
     val task2 = task {
         dependency(failingTask)
@@ -261,13 +302,17 @@ fun main() {
         }
     }
     val task3 = task {
+        val dep1 = dependency(task1)
         dependency(task2)
         dependency(failingTask2)
-        executing { 100 }
+        executing {
+            value(dep1) + 100
+        }
     }
+    val task4 = aggregatorTask(task2, task3)
     val executor = TaskExecutor(Executors.newCachedThreadPool(), 4)
     try {
-        val result = executor.execute(task3)
+        val result = executor.execute(task4)
         println(result)
     } finally {
         executor.executorService.shutdown()
