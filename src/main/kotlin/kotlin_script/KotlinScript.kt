@@ -402,17 +402,20 @@ class KotlinScript(
             val flags = mutableMapOf<String, String?>()
             var k = 0
             while (k < args.size) {
-                val key = args[k]
-                if (!key.startsWith("-")) break
+                val arg = args[k]
+                if (!arg.startsWith("-")) break
+                val key = when {
+                    arg.startsWith("--") -> arg.substringBefore('=')
+                    else -> arg
+                }
                 k++
-                val v = when (key.substringBefore('=')) {
-                    "-d", "-M",
+                val v = when (key) {
+                    "-d", "-M" -> args.getOrNull(k).also { k++ }
                     "--install-kotlin-script-sh",
                     "--install-kotlin-script-jar",
-                    "--install-kotlin-stdlib-jar" -> if ("=" in key) {
-                        key.substringAfter('=')
-                    } else {
-                        args.getOrNull(k).also { k++ }
+                    "--install-kotlin-stdlib-jar" -> when {
+                        "=" in arg -> arg.substringAfter('=')
+                        else -> args.getOrNull(k).also { k++ }
                     }
                     "-version", "-x", "-P" -> "yes"
                     else -> error("unknown option: $key")
@@ -431,15 +434,15 @@ class KotlinScript(
                     kotlinStdlibJar = flags["--install-kotlin-stdlib-jar"]
                             ?.takeIf { v -> v.isNotBlank() }
                             ?.let { Paths.get(it) },
-                    mavenRepoUrl = System.getenv("K2_REPO")
+                    mavenRepoUrl = System.getenv("M2_CENTRAL_REPO")
                             ?.takeIf { v -> v.isNotBlank() }
                             ?.trim()
                             ?: "https://repo1.maven.org/maven2",
-                    mavenRepoCache = System.getenv("K2_LOCAL_MIRROR")
+                    mavenRepoCache = System.getenv("M2_LOCAL_MIRROR")
                             ?.takeIf { v -> v.isNotBlank() }
                             ?.trim()
                             ?.let { Paths.get(it) },
-                    localRepo = System.getenv("K2_LOCAL_REPO")
+                    localRepo = System.getenv("M2_LOCAL_REPO")
                             ?.takeIf { v -> v.isNotBlank() }
                             ?.trim()
                             ?.let { Paths.get(it) }

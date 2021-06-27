@@ -3,24 +3,23 @@ import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.4.10"
+    val kotlinVersion = "1.5.20"
 
     kotlin("jvm") version kotlinVersion
-    id("org.jetbrains.dokka") version kotlinVersion
+    id("org.jetbrains.dokka") version "1.4.32"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.4.10.1"
+version = "1.5.20.0"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_7
-    targetCompatibility = JavaVersion.VERSION_1_7
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 repositories {
     mavenCentral()
-    jcenter()
 }
 
 sourceSets {
@@ -46,34 +45,34 @@ dependencies {
     testImplementation("junit:junit:4.13")
 
     examplesImplementation("com.pi4j:pi4j-core:1.2")
-    examplesImplementation("org.apache.sshd:sshd-netty:2.4.0")
-    examplesImplementation("io.vertx:vertx-core:3.9.0")
-    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.11.0")
+    examplesImplementation("org.apache.sshd:sshd-netty:2.7.0")
+    examplesImplementation("io.vertx:vertx-core:4.1.0")
+    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.12.3")
 }
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
     jdkHome = properties["jdk.home"]?.toString()?.takeIf { it != "unspecified" }
-    jvmTarget = "1.6"
+    jvmTarget = "1.8"
 }
 
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "1.6"
+    jvmTarget = "1.8"
 }
 
 val main by sourceSets
 
 val sourcesJar by tasks.creating(Jar::class) {
     group = "build"
-    classifier = "sources"
+    archiveClassifier.set("sources")
     from(main.allSource)
 }
 
 val dokkaJar by tasks.creating(Jar::class) {
     group = JavaBasePlugin.DOCUMENTATION_GROUP
     description = "Assembles Kotlin docs with Dokka"
-    classifier = "javadoc"
+    archiveClassifier.set("javadoc")
     from(tasks["dokkaJavadoc"])
 }
 
@@ -86,11 +85,11 @@ tasks.named<Jar>("jar") {
     val compilerClassPath = configurations.kotlinCompilerClasspath.get().resolvedConfiguration.resolvedArtifacts
     manifest {
         attributes["Implementation-Title"] = "kotlin_script"
-        attributes["Implementation-Version"] = version
+        attributes["Implementation-Version"] = archiveVersion
         attributes["Implementation-Vendor"] = "cikit.org"
         attributes["Main-Class"] = "kotlin_script.KotlinScript"
         attributes["Class-Path"] = "../../../jetbrains/kotlin/kotlin-stdlib/${getKotlinPluginVersion()}/kotlin-stdlib-${getKotlinPluginVersion()}.jar"
-        attributes["Kotlin-Script-Version"] = version
+        attributes["Kotlin-Script-Version"] = archiveVersion
         attributes["Kotlin-Compiler-Version"] = getKotlinPluginVersion()
         attributes["Kotlin-Compiler-Class-Path"] = compilerClassPath.joinToString(" ") { a ->
             "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +

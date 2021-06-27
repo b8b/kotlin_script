@@ -10,7 +10,7 @@ You can easily install any version of `kotlin_script` (linked with any
  kotlin version) with the following gradle task.
  
 ```
-v=1.4.10.1
+v=1.5.20.0
 ./gradlew jar sourcesJar dokkaJar copyDependencies
 
 # run install script with embedded kotlin_script installer
@@ -40,23 +40,24 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.4.10.1
+v=1.5.20.0
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
-kotlin_script_sh="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
-if [ -r "$kotlin_script_sh" ]; then tmp_f=; else
-  tmp_f="$(mktemp)" || exit 1
+kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+kotlin_script_url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
+if ! [ -r "$kotlin_script_sh" ]; then
+  kotlin_script_sh="$(mktemp)" || exit 1
   fetch_cmd="$(command -v curl) -kfLSso" || \
     fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
     fetch_cmd="wget --no-check-certificate -qO"
-  if ! $fetch_cmd "$tmp_f" "${K2_REPO:-https://repo1.maven.org/maven2}"/"$p"
-  then echo "failed to fetch kotlin_script.sh" >&2; exit 1; fi
+  if ! $fetch_cmd "$kotlin_script_sh" "$kotlin_script_url"; then
+    echo "failed to fetch kotlin_script.sh from $kotlin_script_url" >&2
+    rm -f "$kotlin_script_sh"; exit 1
+  fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
-  case "$($dgst_cmd < "$tmp_f")" in
-  "a2d49952ba934c6e37a1e08bf02c1079b4ab08109138e587f47522e804187a5a "*)
-    kotlin_script_sh="$tmp_f";;
-  *)
-    echo "error: failed to fetch kotlin_script.sh" >&2
-    rm -f "$tmp_f"; exit 1;;
+  case "$($dgst_cmd < "$kotlin_script_sh")" in
+  "fa0a28c2e084747b6a4be7faf2f810fa09b17e712f046da698795d1bab5f361e "*) ;;
+  *) echo "error: failed to verify kotlin_script.sh" >&2
+     rm -f "$kotlin_script_sh"; exit 1;;
   esac
 fi
 . "$kotlin_script_sh"; exit 2
@@ -81,7 +82,6 @@ version to determine if recompilation is required.
 
 Some shell variables can be customized in the embedded installer.
 
-* `tmp_f` - path to temporary file to be cleaned up
 * `kotlin_script_sh` - path to kotlin_script-XX.sh
 * `fetch_cmd` - command to fetch files
 * `dgst_cmd` - command to calculate sha256 checksum of stdin
@@ -90,9 +90,9 @@ Some shell variables can be customized in the embedded installer.
 
 Environment variables
 
-* `K2_REPO` - maven2 repository url to fetch missing dependency artifacts
-* `K2_LOCAL_MIRROR` - read-only local maven2 repository
-* `K2_LOCAL_REPO` - local maven2 repository populated with dependency artifacts
+* `M2_CENTRAL_REPO` - maven2 repository url to fetch missing dependency artifacts
+* `M2_LOCAL_REPO` - local maven2 repository populated with dependency artifacts
+* `M2_LOCAL_MIRROR` - read-only local maven2 repository
 
 ## Metadata
 

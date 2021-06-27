@@ -38,8 +38,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
+import java.time.OffsetDateTime
 import java.util.jar.Manifest
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
@@ -66,7 +69,20 @@ private fun updateManifest(manifest: Manifest, compilerLibDir: Path): Manifest {
     return manifest
 }
 
+private fun getTimeStamp(): OffsetDateTime {
+    val p = ProcessBuilder("git", "log", "-1", "--format=%aI")
+        .inheritIO()
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        .start()
+    val output = p.inputStream.use { `in` -> String(`in`.readBytes()) }
+    val rc = p.waitFor()
+    if (rc != 0) error("git terminated with exit code $rc")
+    return OffsetDateTime.parse(output.trim())
+}
+
 fun main(args: Array<String>) {
+    val ts = getTimeStamp().toInstant()
+
     val mainJar = Paths.get(args.single())
 
     val home = Paths.get(System.getProperty("user.home"))
@@ -75,29 +91,40 @@ fun main(args: Array<String>) {
     val tmp = Files.createTempFile("kotlin_script", ".jar")
 
     ZipFile(mainJar.toFile()).use { z ->
+        val allEntries = mutableListOf<Pair<ZipEntry, ByteArray>>()
+        for (entry in z.entries()) {
+            entry.creationTime = FileTime.from(ts)
+            entry.lastAccessTime = entry.creationTime
+            entry.lastModifiedTime = entry.creationTime
+            if (entry.name == "META-INF/MANIFEST.MF") {
+                val manifest = z.getInputStream(entry).use { `in` -> Manifest(`in`) }
+                val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
+                        ?: error("no Kotlin-Compiler-Version in manifest")
+                val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
+                updateManifest(manifest, compilerLibDir)
+                val data = ByteArrayOutputStream().use { tmp ->
+                    manifest.write(tmp)
+                    tmp.toByteArray()
+                }
+                entry.size = data.size.toLong()
+                entry.compressedSize = -1
+                allEntries += entry to data
+            } else {
+                val data = ByteArrayOutputStream().use { tmp ->
+                    z.getInputStream(entry).use { `in` ->
+                        `in`.copyTo(tmp)
+                    }
+                    tmp.toByteArray()
+                }
+                allEntries += entry to data
+            }
+        }
+        allEntries.sortBy { it.first.name }
         FileOutputStream(tmp.toFile()).use { out ->
             ZipOutputStream(out).use { zout ->
-                for (entry in z.entries()) {
-                    if (entry.name == "META-INF/MANIFEST.MF") {
-                        val manifest = z.getInputStream(entry).use { `in` -> Manifest(`in`) }
-                        val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
-                                ?: error("no Kotlin-Compiler-Version in manifest")
-                        val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
-                        updateManifest(manifest, compilerLibDir)
-                        val data = ByteArrayOutputStream().use { tmp ->
-                            manifest.write(tmp)
-                            tmp.toByteArray()
-                        }
-                        entry.size = data.size.toLong()
-                        entry.compressedSize = -1
-                        zout.putNextEntry(entry)
-                        zout.write(data)
-                    } else {
-                        zout.putNextEntry(entry)
-                        z.getInputStream(entry).use { `in` ->
-                            `in`.copyTo(zout)
-                        }
-                    }
+                for ((entry, data) in allEntries) {
+                    zout.putNextEntry(entry)
+                    zout.write(data)
                 }
             }
         }
@@ -127,7 +154,30 @@ fun main(args: Array<String>) {
             "kotlin_script-$kotlinScriptVersion-javadoc.jar",
             "kotlin_script-$kotlinScriptVersion-sources.jar"
     )) {
-        Files.copy(mainJar.parent.resolve(item), repoKotlinScript.resolve(item), StandardCopyOption.REPLACE_EXISTING)
+        ZipFile(mainJar.parent.resolve(item).toFile()).use { z ->
+            val allEntries = mutableListOf<Pair<ZipEntry, ByteArray>>()
+            for (entry in z.entries()) {
+                entry.creationTime = FileTime.from(ts)
+                entry.lastAccessTime = entry.creationTime
+                entry.lastModifiedTime = entry.creationTime
+                val data = ByteArrayOutputStream().use { tmp ->
+                    z.getInputStream(entry).use { `in` ->
+                        `in`.copyTo(tmp)
+                    }
+                    tmp.toByteArray()
+                }
+                allEntries += entry to data
+            }
+            allEntries.sortBy { it.first.name }
+            Files.newOutputStream(repoKotlinScript.resolve(item)).use { out ->
+                ZipOutputStream(out).use { zout ->
+                    for ((entry, data) in allEntries) {
+                        zout.putNextEntry(entry)
+                        zout.write(data)
+                    }
+                }
+            }
+        }
     }
 
     val scriptTgt = repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.sh")

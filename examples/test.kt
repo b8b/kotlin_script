@@ -10,23 +10,24 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.4.10.1
+v=1.5.20.0
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
-kotlin_script_sh="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
-if [ -r "$kotlin_script_sh" ]; then tmp_f=; else
-  tmp_f="$(mktemp)" || exit 1
+kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+kotlin_script_url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
+if ! [ -r "$kotlin_script_sh" ]; then
+  kotlin_script_sh="$(mktemp)" || exit 1
   fetch_cmd="$(command -v curl) -kfLSso" || \
     fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
     fetch_cmd="wget --no-check-certificate -qO"
-  if ! $fetch_cmd "$tmp_f" "${K2_REPO:-https://repo1.maven.org/maven2}"/"$p"
-  then echo "failed to fetch kotlin_script.sh" >&2; exit 1; fi
+  if ! $fetch_cmd "$kotlin_script_sh" "$kotlin_script_url"; then
+    echo "failed to fetch kotlin_script.sh from $kotlin_script_url" >&2
+    rm -f "$kotlin_script_sh"; exit 1
+  fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
-  case "$($dgst_cmd < "$tmp_f")" in
-  "a2d49952ba934c6e37a1e08bf02c1079b4ab08109138e587f47522e804187a5a "*)
-    kotlin_script_sh="$tmp_f";;
-  *)
-    echo "error: failed to fetch kotlin_script.sh" >&2
-    rm -f "$tmp_f"; exit 1;;
+  case "$($dgst_cmd < "$kotlin_script_sh")" in
+  "fa0a28c2e084747b6a4be7faf2f810fa09b17e712f046da698795d1bab5f361e "*) ;;
+  *) echo "error: failed to verify kotlin_script.sh" >&2
+     rm -f "$kotlin_script_sh"; exit 1;;
   esac
 fi
 . "$kotlin_script_sh"; exit 2
@@ -80,8 +81,7 @@ fun main() {
     //+test.kt:3>
     val locPattern = "^\\+(.*?):(\\d+)> .*\$".toRegex()
 
-    val kotlinScript = {
-        val fileName = "kotlin_script-$v.sh"
+    val kotlinScript = "kotlin_script-$v.sh".let { fileName ->
         val md = MessageDigest.getInstance("SHA-256")
         val lines = FileInputStream(File(libsDir, fileName)).use { `in` ->
             val data = `in`.readBytes()
@@ -101,7 +101,7 @@ fun main() {
             }
         }
         Script(fileName, sha256, lines, shellFunctions)
-    }()
+    }
 
     val buildDir = File("build")
     val baseDir = File(buildDir, "t_$v")
@@ -113,8 +113,8 @@ fun main() {
 
     val env = arrayOf(
             "PATH=${binDir.absolutePath}",
-            "K2_REPO=${repo.toURI()}",
-            "K2_LOCAL_REPO=${baseDir.toPath().toAbsolutePath().relativize(
+            "M2_CENTRAL_REPO=${repo.toURI()}",
+            "M2_LOCAL_REPO=${baseDir.toPath().toAbsolutePath().relativize(
                     localRepo.toPath().toAbsolutePath())}"
     )
 
@@ -283,20 +283,26 @@ fun main() {
     }
 
     fun reportCoverage() {
-        linesCovered.map { it.first }.toSet().forEach { fileName ->
+        for (fileName in linesCovered.map { it.first }.toSet()) {
             val lines = if (fileName == "kotlin_script-$v.sh") {
                 kotlinScript.lines
             } else {
-                FileReader(File(baseDir, fileName)).useLines { lines ->
-                    lines.toList()
+                val f = File(baseDir, fileName)
+                if (f.exists()) {
+                    FileReader(f).useLines { lines ->
+                        lines.toList()
+                    }
+                } else {
+                    println("warning: $f not found")
+                    continue
                 }
             }
             FileWriter(File(baseDir, "${fileName}.cov")).use { w ->
                 lines.forEachIndexed { index, line ->
                     val ln = fileName to index.inc()
                     if (linesCovered.contains(ln) ||
-                            line.isBlank() ||
-                            line.trimStart().startsWith("#")) {
+                        line.isBlank() ||
+                        line.trimStart().startsWith("#")) {
                         w.write("   ")
                     } else {
                         w.write("!  ")
@@ -400,7 +406,7 @@ fun main() {
                 "env", *env, "script_file=test.kt",
                 zsh, "-xy", "test.kt")
     }
-exitProcess(1)
+
     setupLocalRepo()
 
     test("testNoFetchTool", IllegalStateException::class) {
