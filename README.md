@@ -10,8 +10,8 @@ You can easily install any version of `kotlin_script` (linked with any
  kotlin version) with the following gradle task.
  
 ```
-v=1.5.20.0
-./gradlew jar sourcesJar dokkaJar copyDependencies
+v=1.6.0.0
+./gradlew jar runnerJar sourcesJar dokkaJar copyDependencies
 
 # run install script with embedded kotlin_script installer
 ./examples/install.kt build/libs/kotlin_script-${v}.jar
@@ -19,6 +19,9 @@ v=1.5.20.0
 # alternatively, compile and run install script manually
 ./gradlew examplesClasses
 java -cp build/libs/kotlin_script-${v}.jar:build/classes/kotlin/examples InstallKt build/libs/kotlin_script-${v}.jar
+
+# run tests
+./examples/test.kt
 ```
 
 
@@ -40,22 +43,22 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.5.20.0
+v=1.6.0.0
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
+url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
-kotlin_script_url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 if ! [ -r "$kotlin_script_sh" ]; then
   kotlin_script_sh="$(mktemp)" || exit 1
   fetch_cmd="$(command -v curl) -kfLSso" || \
     fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
     fetch_cmd="wget --no-check-certificate -qO"
-  if ! $fetch_cmd "$kotlin_script_sh" "$kotlin_script_url"; then
-    echo "failed to fetch kotlin_script.sh from $kotlin_script_url" >&2
+  if ! $fetch_cmd "$kotlin_script_sh" "$url"; then
+    echo "failed to fetch kotlin_script.sh from $url" >&2
     rm -f "$kotlin_script_sh"; exit 1
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "fa0a28c2e084747b6a4be7faf2f810fa09b17e712f046da698795d1bab5f361e "*) ;;
+  "c7710288e71855c0ae05004fae38be70f7368f0432f6d660530205026e9bbfbd "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
@@ -73,7 +76,8 @@ You can try an example:
 ./examples/hello.kt
 ```
 
-The file is compiled to a jar file and stored into `~/.kotlin_script/cache`. 
+The file is compiled to a jar file and stored into the local repository with a 
+group id of `org.cikit` and an artifact id of `kotlin_script_cache`. 
 Further invocations will compare a checksum of the file against the cached 
 version to determine if recompilation is required.
 
@@ -96,7 +100,7 @@ Environment variables
 
 ## Metadata
 
-The meta data format within the source files is currently rather simple. 
+The metadata format within the source files is currently rather simple. 
 
 ```
 ///MAIN=some.package.MainClassName
@@ -117,14 +121,11 @@ class path.
 Dependencies are not "resolved" by `kotlin_script`. A maven dependency report 
 can be used to provide the resolved dependency list.
 
-These shortcomings (and others) will be addressed in a future meta data
+These shortcomings (and others) will be addressed in a future metadata
 format. 
 
 
 ## Roadmap
 
-* Split code into separate "up-to-date check" and compiler (done)
-* Implement up-to-date check in C for reasonable startup times (done in sh)
-* Use a reasonable default for `///MAIN=` (done)
-* Use annotations for meta data in source files
-* Support for kts scripts
+* Support kts scripts and annotations for metadata
+* Think of a sane dependency specification format  with full exclude and lock support

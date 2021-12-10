@@ -182,7 +182,8 @@ fun main(args: Array<String>) {
 
     val scriptTgt = repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.sh")
     FileReader("kotlin_script.sh").use { r ->
-        Files.newBufferedWriter(scriptTgt).use { w ->
+        Files.newOutputStream(scriptTgt).use { out ->
+            val w = out.bufferedWriter()
             r.useLines { lines ->
                 for (line in lines) {
                     w.write(line.replace("@kotlin_stdlib_ver@", kotlinVersion)
@@ -190,6 +191,29 @@ fun main(args: Array<String>) {
                             .replace("@kotlin_script_jar_ver@", kotlinScriptVersion)
                             .replace("@kotlin_script_jar_dgst@", mainJarTgt.sha256()))
                     w.write("${'\n'}")
+                }
+            }
+            w.flush()
+            ZipFile(mainJar.parent.resolve("kotlin_script-$kotlinScriptVersion-runner.jar").toFile()).use { z ->
+                val allEntries = mutableListOf<Pair<ZipEntry, ByteArray>>()
+                for (entry in z.entries()) {
+                    entry.creationTime = FileTime.from(ts)
+                    entry.lastAccessTime = entry.creationTime
+                    entry.lastModifiedTime = entry.creationTime
+                    val data = ByteArrayOutputStream().use { tmp ->
+                        z.getInputStream(entry).use { `in` ->
+                            `in`.copyTo(tmp)
+                        }
+                        tmp.toByteArray()
+                    }
+                    allEntries += entry to data
+                }
+                allEntries.sortBy { it.first.name }
+                ZipOutputStream(out).use { zout ->
+                    for ((entry, data) in allEntries) {
+                        zout.putNextEntry(entry)
+                        zout.write(data)
+                    }
                 }
             }
         }

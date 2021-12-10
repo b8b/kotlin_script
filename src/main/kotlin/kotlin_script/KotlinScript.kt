@@ -1,5 +1,6 @@
 package kotlin_script
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.URL
@@ -16,15 +17,23 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 class KotlinScript(
-        val javaHome: Path,
-        val kotlinScriptSh: Path?,
-        val kotlinScriptJar: Path?,
-        val kotlinStdlibJar: Path?,
-        val mavenRepoUrl: String,
-        val mavenRepoCache: Path?,
-        val localRepo: Path,
-        val progress: Boolean,
-        val trace: Boolean,
+    private val javaHome: Path = findJavaHome(),
+    private val mavenRepoUrl: String = System.getenv("M2_CENTRAL_REPO")
+        ?.takeIf { v -> v.isNotBlank() }
+        ?.trim()
+        ?: "https://repo1.maven.org/maven2",
+    private val mavenRepoCache: Path? = System.getenv("M2_LOCAL_MIRROR")
+        ?.takeIf { v -> v.isNotBlank() }
+        ?.trim()
+        ?.let { Paths.get(it) },
+    private val localRepo: Path = System.getenv("M2_LOCAL_REPO")
+        ?.takeIf { v -> v.isNotBlank() }
+        ?.trim()
+        ?.let { Paths.get(it) }
+        ?: userHome.resolve(".m2/repository"),
+    private val progress: Boolean = false,
+    private val trace: Boolean = false,
+    private val force: Boolean = false,
 ) {
     private val manifest = javaClass.classLoader
             .getResources(manifestPath)
@@ -47,46 +56,11 @@ class KotlinScript(
     private val kotlinScriptVersion = manifest["Kotlin-Script-Version"]
             ?: error("no Kotlin-Script-Version in manifest")
 
-    private val kotlinScriptDependency = Dependency(
-            groupId = "org.cikit",
-            artifactId = "kotlin_script",
-            version = kotlinScriptVersion
-    )
+    private val javaVersion =
+        (System.getProperty("java.vm.specification.version") ?: "1.8")
 
-    private val kotlinStdlibDependency = compilerClassPath.single { dep ->
-        dep.groupId == "org.jetbrains.kotlin" &&
-                dep.artifactId == "kotlin-stdlib" &&
-                dep.classifier == null &&
-                dep.type == "jar"
-    }.copy(scope = Scope.Compile)
-
-    private fun copyIntoLocalRepo(src: Path, tgt: Path) {
-        if (!Files.exists(tgt) && Files.exists(src)) {
-            Files.createDirectories(tgt.parent)
-            val tmp = Files.createTempFile(tgt.parent, "${tgt.fileName}~", "")
-            try {
-                Files.copy(src, tmp, StandardCopyOption.REPLACE_EXISTING)
-                Files.move(tmp, tgt, StandardCopyOption.REPLACE_EXISTING,
-                        StandardCopyOption.ATOMIC_MOVE)
-            } catch (_: IOException) {
-            } finally {
-                Files.deleteIfExists(tmp)
-            }
-        }
-    }
-
-    private fun installKotlinScript() {
-        if (kotlinScriptSh != null) {
-            val src = kotlinScriptSh
-            val tgt = localRepo.resolve(kotlinScriptDependency.copy(type = "sh").subPath)
-            copyIntoLocalRepo(src, tgt)
-        }
-        if (kotlinScriptJar != null) {
-            val src = kotlinScriptJar
-            val tgt = localRepo.resolve(kotlinScriptDependency.subPath)
-            copyIntoLocalRepo(src, tgt)
-        }
-    }
+    private val cacheDir: Path get() =
+        localRepo.resolve("org/cikit/kotlin_script_cache/$kotlinScriptVersion")
 
     private fun resolveLib(dep: Dependency): Path {
         val subPath = dep.subPath
@@ -99,19 +73,6 @@ class KotlinScript(
         Files.createDirectories(f.parent)
         val tmp = Files.createTempFile(f.parent, "${f.fileName}~", "")
         try {
-            if (kotlinStdlibJar != null && dep.copy(scope = Scope.Compile) == kotlinStdlibDependency) {
-                try {
-                    Files.copy(kotlinStdlibJar, tmp, StandardCopyOption.REPLACE_EXISTING)
-                    Files.move(
-                            tmp, f,
-                            StandardCopyOption.ATOMIC_MOVE,
-                            StandardCopyOption.REPLACE_EXISTING
-                    )
-                    return f
-                } catch (_: IOException) {
-                }
-            }
-
             when {
                 trace -> System.err.println("++ fetch $mavenRepoUrl/$subPath")
                 progress -> System.err.println("fetching $mavenRepoUrl/$subPath")
@@ -153,22 +114,84 @@ class KotlinScript(
             f.toAbsolutePath().toString()
         }
         return arrayOf(
-                javaHome.resolve("bin/java").toAbsolutePath().toString(),
-                "-Djava.awt.headless=true",
-                "-cp", cp,
-                kotlinCompilerMain,
-                "-jvm-target",
-                System.getProperty("java.vm.specification.version"),
-                "-no-reflect",
-                "-no-stdlib"
+            javaHome.resolve("bin/java").toAbsolutePath().toString(),
+            "-Djava.awt.headless=true",
+            "-cp", cp,
+            kotlinCompilerMain,
+            "-jvm-target",
+            when (javaVersion) {
+                in supportedJavaVersions -> javaVersion
+                else -> supportedJavaVersions.last()
+            },
+            "-no-reflect",
+            "-no-stdlib"
         )
     }
 
-    fun compile(scriptFile: Path): MetaData {
-        val metaData = parseMetaData(kotlinScriptVersion, scriptFile)
+    private fun ZipOutputStream.writeFileTree(start: Path) {
+        val startFullPath = start.toUri().path
+        Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
+            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes) =
+                FileVisitResult.CONTINUE.also {
+                    val fullPath = dir.toUri().path
+                    val entryName = fullPath.removePrefix(startFullPath)
+                    if (entryName.isNotEmpty()) {
+                        putNextEntry(ZipEntry(entryName))
+                        closeEntry()
+                    }
+                }
+            override fun visitFile(file: Path, attrs: BasicFileAttributes) =
+                FileVisitResult.CONTINUE.also {
+                    val fullPath = file.toUri().path
+                    val entryName = fullPath.removePrefix(startFullPath)
+                    if (entryName.isNotEmpty()) {
+                        putNextEntry(ZipEntry(entryName))
+                        Files.newInputStream(file).use { `in` ->
+                            `in`.copyTo(this@writeFileTree)
+                        }
+                        closeEntry()
+                    }
+                }
+        })
+    }
+
+    fun jarCachePath(metaData: MetaData): Path {
+        val checksum = if (metaData.inc.isEmpty()) {
+            metaData.mainScript.checksum
+        } else {
+            ByteArrayOutputStream().use { out ->
+                for (s in listOf(metaData.mainScript) + metaData.inc) {
+                    out.write(s.checksum.toByteArray())
+                    out.write(" ".toByteArray())
+                    out.write(s.path.fileName.toString().toByteArray())
+                    out.write("\n".toByteArray())
+                }
+                out.flush()
+                val md = MessageDigest.getInstance("SHA-256")
+                md.update(out.toByteArray())
+                "sha256=" + md.digest().joinToString("") { b ->
+                    String.format("%02x", b)
+                }
+            }
+        }
+        return cacheDir.resolve(
+            "kotlin_script_cache-$kotlinScriptVersion" +
+                    "-java$javaVersion-$checksum.jar"
+        )
+    }
+
+    fun compile(script: Script): MetaData {
+        val runtimeClassPath = compilerClassPath.filter {
+            it.artifactId in listOf("kotlin-stdlib", "kotlin-reflect")
+        }
+        val metaData = parseMetaData(kotlinScriptVersion, script).let { md ->
+            md.copy(dep = runtimeClassPath + md.dep)
+        }
+        val targetFile = jarCachePath(metaData)
+        if (!force && Files.isReadable(targetFile)) return metaData
 
         // copy script to temp dir
-        val tmp = Files.createTempDirectory(scriptFile.fileName.toString())
+        val tmp = Files.createTempDirectory(script.path.fileName.toString())
         Runtime.getRuntime().addShutdownHook(thread(start = false) {
             cleanup(tmp)
         })
@@ -183,13 +206,13 @@ class KotlinScript(
                 // e.g. maxDepth = 2
                 // /work/kotlin_script/src/main/kotlin/main.kt
                 // -> src/main/kotlin/main.kt
-                val nameCount = scriptFile.nameCount
-                val scriptSubPath = scriptFile.subpath(
+                val nameCount = script.path.nameCount
+                val scriptSubPath = script.path.subpath(
                         nameCount - maxDepth - 2,
                         nameCount)
                 scriptSubPath
             }
-            else -> scriptFile.fileName
+            else -> script.path.fileName
         }
         val scriptTmpPath = tmp.resolve(scriptTmpSubPath)
         val scriptTmpParent = scriptTmpPath.parent
@@ -214,13 +237,10 @@ class KotlinScript(
         }
 
         // call compiler
-        val scriptFileName = scriptFile.fileName.toString()
+        val scriptFileName = script.path.fileName.toString()
         val scriptFileArgs = when (scriptFileName.endsWith(".kt")) {
             true -> listOf(scriptFileName)
             else -> emptyList()
-        }
-        val runtimeClassPath = compilerClassPath.filter {
-            it.artifactId in listOf("kotlin-stdlib", "kotlin-reflect")
         }
         val compileClassPath = (
                 runtimeClassPath + metaData.dep.filter { d ->
@@ -260,26 +280,15 @@ class KotlinScript(
             0 to ""
         }
 
-        val finalMetaData = metaData.copy(
-                dep = runtimeClassPath + metaData.dep,
-                localRepo = localRepo,
-                compilerExitCode = rc,
-                compilerErrors = compilerErrors.split("\n")
-        )
-        finalMetaData.storeToFile(localRepo.resolve(metaData.mdCachePath))
-
         if (rc != 0) {
-            return finalMetaData
+            System.err.println(compilerErrors)
+            exitProcess(rc)
         }
 
-        val targetFile = localRepo.resolve(metaData.jarCachePath)
-
         // embed metadata into jar
-        finalMetaData.storeToFile(
-                tmp.resolve("kotlin_script.metadata")
-        )
-        val mainClass = finalMetaData.main
-        val classPath = finalMetaData.dep.filter {
+        metaData.storeToFile(tmp.resolve("kotlin_script.metadata"))
+        val mainClass = metaData.main
+        val classPath = metaData.dep.filter {
             it.scope in listOf(Scope.Compile, Scope.Runtime)
         }.map {
             val libFile = resolveLib(it)
@@ -332,42 +341,22 @@ class KotlinScript(
             }
         }
 
-        return finalMetaData
-    }
-
-    private fun ZipOutputStream.writeFileTree(start: Path) {
-        val startFullPath = start.toUri().path
-        Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes) =
-                    FileVisitResult.CONTINUE.also {
-                        val fullPath = dir.toUri().path
-                        val entryName = fullPath.removePrefix(startFullPath)
-                        if (entryName.isNotEmpty()) {
-                            putNextEntry(ZipEntry(entryName))
-                            closeEntry()
-                        }
-                    }
-            override fun visitFile(file: Path, attrs: BasicFileAttributes) =
-                    FileVisitResult.CONTINUE.also {
-                        val fullPath = file.toUri().path
-                        val entryName = fullPath.removePrefix(startFullPath)
-                        if (entryName.isNotEmpty()) {
-                            putNextEntry(ZipEntry(entryName))
-                            Files.newInputStream(file).use { `in` ->
-                                `in`.copyTo(this@writeFileTree)
-                            }
-                            closeEntry()
-                        }
-                    }
-        })
+        return metaData
     }
 
     companion object {
 
+        private val userHome = Paths.get(System.getProperty("user.home")
+            ?: error("user.home system property not set"))
+
+        private val supportedJavaVersions = listOf(
+            "1.8", "9", "10", "11", "12", "13", "14", "15", "16", "17"
+        )
+
         private const val kotlinCompilerMain =
                 "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
 
-        const val manifestPath = "META-INF/MANIFEST.MF"
+        private const val manifestPath = "META-INF/MANIFEST.MF"
 
         private fun cleanup(dir: Path) {
             try {
@@ -395,93 +384,22 @@ class KotlinScript(
         }
 
         @JvmStatic
-        fun main(args: Array<String>) {
-            val userHome = Paths.get(System.getProperty("user.home")
-                    ?: error("user.home system property not set"))
-
-            val flags = mutableMapOf<String, String?>()
-            var k = 0
-            while (k < args.size) {
-                val arg = args[k]
-                if (!arg.startsWith("-")) break
-                val key = when {
-                    arg.startsWith("--") -> arg.substringBefore('=')
-                    else -> arg
-                }
-                k++
-                val v = when (key) {
-                    "-d", "-M" -> args.getOrNull(k).also { k++ }
-                    "--install-kotlin-script-sh",
-                    "--install-kotlin-script-jar",
-                    "--install-kotlin-stdlib-jar" -> when {
-                        "=" in arg -> arg.substringAfter('=')
-                        else -> args.getOrNull(k).also { k++ }
-                    }
-                    "-version", "-x", "-P" -> "yes"
-                    else -> error("unknown option: $key")
-                }
-                flags[key] = v
-            }
-
-            val ks = KotlinScript(
-                    javaHome = findJavaHome(),
-                    kotlinScriptSh = flags["--install-kotlin-script-sh"]
-                            ?.takeIf { v -> v.isNotBlank() }
-                            ?.let { Paths.get(it) },
-                    kotlinScriptJar = flags["--install-kotlin-script-jar"]
-                            ?.takeIf { v -> v.isNotBlank() }
-                            ?.let { Paths.get(it) },
-                    kotlinStdlibJar = flags["--install-kotlin-stdlib-jar"]
-                            ?.takeIf { v -> v.isNotBlank() }
-                            ?.let { Paths.get(it) },
-                    mavenRepoUrl = System.getenv("M2_CENTRAL_REPO")
-                            ?.takeIf { v -> v.isNotBlank() }
-                            ?.trim()
-                            ?: "https://repo1.maven.org/maven2",
-                    mavenRepoCache = System.getenv("M2_LOCAL_MIRROR")
-                            ?.takeIf { v -> v.isNotBlank() }
-                            ?.trim()
-                            ?.let { Paths.get(it) },
-                    localRepo = System.getenv("M2_LOCAL_REPO")
-                            ?.takeIf { v -> v.isNotBlank() }
-                            ?.trim()
-                            ?.let { Paths.get(it) }
-                            ?: userHome.resolve(".m2/repository"),
-                    progress = flags["-P"] == "yes",
-                    trace = flags["-x"] == "yes"
+        fun compileScript(
+            scriptFile: Path,
+            scriptData: ByteArray,
+            scriptFileSha256: String,
+            scriptMetadata: Path
+        ): Path {
+            val flags = System.getProperty("kotlin_script.flags") ?: ""
+            val script = Script(scriptFile, "sha256=$scriptFileSha256", scriptData)
+            val kotlinScript = KotlinScript(
+                progress = "-P" in flags,
+                trace = "-x" in flags,
+                force = "-f" in flags,
             )
-
-            if (flags["-version"] == "yes") {
-                println(ks.kotlinScriptVersion)
-                exitProcess(0)
-            }
-
-            val scriptFileName = args.getOrNull(k)
-                    ?: error("missing script path")
-
-            val scriptFile = Paths.get(scriptFileName)
-            if (!Files.exists(scriptFile)) {
-                error("file not found: '$scriptFile'")
-            }
-
-            ks.installKotlinScript()
-
-            val metaData = ks.compile(scriptFile)
-            if (metaData.compilerExitCode != 0) {
-                metaData.compilerErrors.forEach(System.err::println)
-                exitProcess(metaData.compilerExitCode)
-            }
-
-            flags["-M"]?.let { storeMetaData ->
-                metaData.storeToFile(Paths.get(storeMetaData))
-            }
-
-            flags["-d"]?.let { storeJar ->
-                val target = Paths.get(storeJar)
-                target.parent?.let { p -> Files.createDirectories(p) }
-                Files.copy(ks.localRepo.resolve(metaData.jarCachePath), target,
-                    StandardCopyOption.REPLACE_EXISTING)
-            }
+            val metaData = kotlinScript.compile(script)
+            metaData.storeToFile(scriptMetadata)
+            return kotlinScript.jarCachePath(metaData)
         }
 
     }

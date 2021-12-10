@@ -3,15 +3,15 @@ import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.5.20"
+    val kotlinVersion = "1.6.0"
 
     kotlin("jvm") version kotlinVersion
-    id("org.jetbrains.dokka") version "1.4.32"
+    id("org.jetbrains.dokka") version "1.6.0"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.5.20.0"
+version = "1.6.0.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -23,6 +23,11 @@ repositories {
 }
 
 sourceSets {
+    create("runner") {
+        java {
+            srcDir("runner")
+        }
+    }
     create("examples") {
         withConvention(KotlinSourceSet::class) {
             kotlin.setSrcDirs(listOf("examples"))
@@ -42,12 +47,17 @@ fun DependencyHandler.examplesImplementation(dependencyNotation: Any): Dependenc
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
-    testImplementation("junit:junit:4.13")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.8.1")
 
+    examplesImplementation("org.cikit:kotlin_script:$version")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
-    examplesImplementation("org.apache.sshd:sshd-netty:2.7.0")
-    examplesImplementation("io.vertx:vertx-core:4.1.0")
-    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.12.3")
+    examplesImplementation("org.apache.sshd:sshd-netty:2.8.0")
+    examplesImplementation("org.apache.sshd:sshd-git:2.8.0")
+    examplesImplementation("net.i2p.crypto:eddsa:0.3.0")
+    examplesImplementation("org.bouncycastle:bcpkix-jdk15on:1.69")
+    examplesImplementation("io.vertx:vertx-core:4.2.1")
+    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.13.0")
+    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:3.3.0")
 }
 
 val compileKotlin: KotlinCompile by tasks
@@ -62,6 +72,7 @@ compileTestKotlin.kotlinOptions {
 }
 
 val main by sourceSets
+val runner by sourceSets
 
 val sourcesJar by tasks.creating(Jar::class) {
     group = "build"
@@ -74,6 +85,18 @@ val dokkaJar by tasks.creating(Jar::class) {
     description = "Assembles Kotlin docs with Dokka"
     archiveClassifier.set("javadoc")
     from(tasks["dokkaJavadoc"])
+}
+
+val runnerJar by tasks.creating(Jar::class) {
+    group = "build"
+    archiveClassifier.set("runner")
+    from(runner.output)
+    manifest {
+        attributes["Implementation-Title"] = "kotlin_script"
+        attributes["Implementation-Version"] = archiveVersion
+        attributes["Implementation-Vendor"] = "cikit.org"
+        attributes["Main-Class"] = "kotlin_script.Runner"
+    }
 }
 
 tasks.named<Jar>("jar") {
@@ -105,21 +128,16 @@ tasks.named<Jar>("jar") {
 }
 
 val copyDependencies by tasks.registering(Copy::class) {
+    val kotlinVersion = getKotlinPluginVersion()
     group = "build"
     description = "copy runtime dependencies into build directory"
-    destinationDir = File(buildDir, "libs/kotlin-compiler-${getKotlinPluginVersion()}/kotlinc/lib")
+    destinationDir = File(buildDir, "libs/kotlin-compiler-$kotlinVersion/kotlinc/lib")
     from(configurations.kotlinCompilerClasspath)
     rename { f ->
-        val iVersion = f.lastIndexOf('-')
-        if (iVersion < 0) {
-            f
+        if (kotlinVersion in f) {
+            f.replace("-$kotlinVersion", "")
         } else {
-            val suffix = f.substring(iVersion + 1)
-                    .substringAfterLast('.', "")
-            f.substring(0, iVersion) + when (suffix) {
-                "" -> ""
-                else -> ".$suffix"
-            }
+            f.replace(Regex("""-\d.*(\.jar)$"""), "\$1")
         }
     }
 }
