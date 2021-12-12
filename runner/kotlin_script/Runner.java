@@ -312,27 +312,6 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         }
     }
 
-    private void installToLocalRepo() {
-        final Path runningPath;
-        final String runningPathProperty = System.getProperty("kotlin_script.sh");
-        if (runningPathProperty != null && isNotBlank(runningPathProperty)) {
-            runningPath = Paths.get(runningPathProperty);
-        } else {
-            return;
-        }
-        final Path targetPath = localRepo.resolve(
-                "org/cikit/kotlin_script/" + kotlinScriptVersion +
-                        "/kotlin_script-" + kotlinScriptVersion + ".sh");
-        try {
-            if (Files.isSameFile(runningPath, targetPath)) {
-                return;
-            }
-            Files.copy(runningPath, targetPath);
-        } catch (IOException e) {
-            //ignored
-        }
-    }
-
     private void executeCachedJar(Path compiledJar, String[] args) throws IOException, ClassNotFoundException,
             NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         final Path scriptDir;
@@ -515,8 +494,6 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         final Runner runner = new Runner(Paths.get(args[0]));
         final String[] scriptArgs = new String[args.length - 1];
         System.arraycopy(args, 1, scriptArgs, 0, args.length - 1);
-
-        runner.installToLocalRepo();
 
         try {
             runner.executeCachedJar(null, scriptArgs);
