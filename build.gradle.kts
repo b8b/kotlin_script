@@ -47,7 +47,10 @@ fun DependencyHandler.examplesImplementation(dependencyNotation: Any): Dependenc
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.8.1")
+
+    testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7")
+    testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.25")
 
     examplesImplementation("org.cikit:kotlin_script:$version")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
