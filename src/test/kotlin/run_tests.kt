@@ -364,19 +364,9 @@ private fun test(instance: Any?, method: Method, name: String) {
 private fun ClassLoader.findClasses(
     predicate: (String) -> Boolean = { true }
 ): Sequence<String> {
-    return getResources("").asSequence().flatMap { r ->
-        val p = Paths.get(r.toURI())
-        Files.walk(p).asSequence().mapNotNull { f ->
-            if (f.fileName.toString().endsWith(".class")) {
-                (p.nameCount until f.nameCount)
-                    .joinToString(".") { i -> "${f.getName(i)}" }
-                    .removeSuffix(".class")
-                    .takeIf(predicate)
-            } else {
-                null
-            }
-        }
-    } + getResources("META-INF/MANIFEST.MF").asSequence().flatMap { r ->
+    val allResources = getResources("").asSequence() +
+            getResources("META-INF/MANIFEST.MF").asSequence()
+    return allResources.flatMap { r ->
         val uri = r.toString()
         if (uri.startsWith("jar:file:")) {
             val jar = uri.substringBeforeLast("!").removePrefix("jar:file:")
@@ -391,7 +381,20 @@ private fun ClassLoader.findClasses(
                     null
                 }
             }
+        } else if (uri.startsWith("file:")) {
+            val p = Paths.get(r.toURI())
+            Files.walk(p).asSequence().mapNotNull { f ->
+                if (f.fileName.toString().endsWith(".class")) {
+                    (p.nameCount until f.nameCount)
+                        .joinToString(".") { i -> "${f.getName(i)}" }
+                        .removeSuffix(".class")
+                        .takeIf(predicate)
+                } else {
+                    null
+                }
+            }
         } else {
+            System.err.println("warning: skipped unsupported uri: $uri")
             emptySequence()
         }
     }
