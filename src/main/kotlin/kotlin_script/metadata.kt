@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 
 data class MetaData(
     val mainScript: Script,
@@ -15,6 +16,35 @@ data class MetaData(
     val dep: List<Dependency>,
     val compilerArgs: List<String> = listOf(),
 ) {
+    val jarCachePath: Path
+        get() {
+            if (inc.isEmpty()) return mainScript.checksum.let { checksum ->
+                Paths.get(
+                    "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
+                    "kotlin_script_cache-$kotlinScriptVersion-$checksum.jar"
+                )
+            }
+            val input = mainScript.checksum + " " + mainScript.path.fileName + "\n" +
+                    inc.joinToString("") { script ->
+                        script.checksum + " " + when (val baseDir = mainScript.path.parent) {
+                            null -> script.path.fileName
+                            else -> baseDir.relativize(script.path)
+                        } + "\n"
+                    }
+            return ("sha256=" + input.sha256).let { checksum ->
+                Paths.get(
+                    "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
+                    "kotlin_script_cache-$kotlinScriptVersion-$checksum.jar"
+                )
+            }
+        }
+
+    private val String.sha256
+        get() = MessageDigest.getInstance("SHA-256").let { md ->
+            md.update(this.toByteArray())
+            md.digest().joinToString("") { x -> String.format("%02x", x) }
+        }
+
     private fun store(out: OutputStream) {
         val w = out.bufferedWriter(Charsets.UTF_8)
         w.write("///KOTLIN_SCRIPT_VERSION=$kotlinScriptVersion\n")
@@ -60,7 +90,7 @@ data class MetaData(
 
 fun parseMetaData(kotlinScriptVersion: String, mainScript: Script): MetaData {
     val metaDataMap = ByteArrayInputStream(mainScript.data).use { `in` ->
-        `in`.bufferedReader(Charsets.UTF_8).lineSequence().filter { line ->
+        `in`.bufferedReader().lineSequence().filter { line ->
             line.startsWith("///")
         }.map { line ->
             line.removePrefix("///").split('=', limit = 2)

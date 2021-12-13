@@ -1,6 +1,5 @@
 package kotlin_script
 
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.URL
@@ -58,9 +57,6 @@ class KotlinScript(
 
     private val javaVersion =
         (System.getProperty("java.vm.specification.version") ?: "1.8")
-
-    private val cacheDir: Path get() =
-        localRepo.resolve("org/cikit/kotlin_script_cache/$kotlinScriptVersion")
 
     private fun resolveLib(dep: Dependency): Path {
         val subPath = dep.subPath
@@ -155,30 +151,8 @@ class KotlinScript(
         })
     }
 
-    fun jarCachePath(metaData: MetaData): Path {
-        val checksum = if (metaData.inc.isEmpty()) {
-            metaData.mainScript.checksum
-        } else {
-            ByteArrayOutputStream().use { out ->
-                for (s in listOf(metaData.mainScript) + metaData.inc) {
-                    out.write(s.checksum.toByteArray())
-                    out.write(" ".toByteArray())
-                    out.write(s.path.fileName.toString().toByteArray())
-                    out.write("\n".toByteArray())
-                }
-                out.flush()
-                val md = MessageDigest.getInstance("SHA-256")
-                md.update(out.toByteArray())
-                "sha256=" + md.digest().joinToString("") { b ->
-                    String.format("%02x", b)
-                }
-            }
-        }
-        return cacheDir.resolve(
-            "kotlin_script_cache-$kotlinScriptVersion" +
-                    "-java$javaVersion-$checksum.jar"
-        )
-    }
+    fun jarCachePath(metaData: MetaData): Path =
+        localRepo.resolve(metaData.jarCachePath)
 
     fun compile(script: Script): MetaData {
         val runtimeClassPath = compilerClassPath.filter {
