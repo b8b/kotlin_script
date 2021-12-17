@@ -1,17 +1,7 @@
 package kotlin_script;
 
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import javax.net.ssl.*;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -491,7 +481,16 @@ public class Runner implements X509TrustManager, HostnameVerifier {
             System.exit(2);
         }
 
-        final Runner runner = new Runner(Paths.get(args[0]));
+        final String scriptName = args[0];
+        final String scriptFlags = System.getenv("$KOTLIN_SCRIPT_FLAGS");
+        System.setProperty("kotlin_script.name", scriptName);
+        if (scriptFlags == null) {
+            System.setProperty("kotlin_script.flags", "");
+        } else {
+            System.setProperty("kotlin_script.flags", scriptFlags);
+        }
+
+        final Runner runner = new Runner(Paths.get(scriptName));
         final String[] scriptArgs = new String[args.length - 1];
         System.arraycopy(args, 1, scriptArgs, 0, args.length - 1);
 
