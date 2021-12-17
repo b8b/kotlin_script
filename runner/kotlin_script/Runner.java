@@ -35,7 +35,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
     private final String kotlinScriptVersion;
     private final Path cacheDir;
 
-    private final SSLSocketFactory sf;
+    private SSLSocketFactory _sf = null;
     private final MessageDigest md;
 
     private final Path scriptFile;
@@ -43,7 +43,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
     private final String scriptFileSha256;
     private final Path scriptMetadata;
 
-    private Runner(Path scriptFile) throws NoSuchAlgorithmException, KeyManagementException, IOException {
+    private Runner(Path scriptFile) throws NoSuchAlgorithmException, IOException {
         final String javaVersionProperty = System.getProperty("java.vm.specification.version");
         final String javaVersionDefault = "1.8";
         if (javaVersionProperty != null && isNotBlank(javaVersionProperty)) {
@@ -115,10 +115,6 @@ public class Runner implements X509TrustManager, HostnameVerifier {
 
         cacheDir = localRepo.resolve("org/cikit/kotlin_script_cache/" + kotlinScriptVersion);
 
-        final SSLContext context = SSLContext.getInstance("TLS");
-        context.init(null, new TrustManager[]{this}, new SecureRandom());
-        this.sf = context.getSocketFactory();
-
         this.md = MessageDigest.getInstance("SHA-256");
         this.scriptFile = scriptFile;
         try (InputStream in = Files.newInputStream(scriptFile)) {
@@ -132,6 +128,19 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         }
         this.scriptMetadata = cacheDir.resolve("kotlin_script_cache-" +
                 kotlinScriptVersion + "-sha256=" + scriptFileSha256 + ".metadata");
+    }
+
+    private SSLSocketFactory getSocketFactory() throws IOException {
+        if (this._sf == null) {
+            try {
+                final SSLContext context = SSLContext.getInstance("TLS");
+                context.init(null, new TrustManager[]{this}, new SecureRandom());
+                this._sf = context.getSocketFactory();
+            } catch (NoSuchAlgorithmException | KeyManagementException e) {
+                throw new IOException(e);
+            }
+        }
+        return this._sf;
     }
 
     @Override
@@ -205,7 +214,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
                     }
                     final URLConnection cn = source.openConnection();
                     if (cn instanceof HttpsURLConnection) {
-                        ((HttpsURLConnection) cn).setSSLSocketFactory(sf);
+                        ((HttpsURLConnection) cn).setSSLSocketFactory(getSocketFactory());
                         ((HttpsURLConnection) cn).setHostnameVerifier(this);
                     }
                     try {
