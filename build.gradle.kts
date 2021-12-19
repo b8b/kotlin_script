@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "1.6.10.16"
+version = "1.6.10.17"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
