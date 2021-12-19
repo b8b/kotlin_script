@@ -25,10 +25,7 @@ data class MetaData(
         }
         val input = mainScript.checksum + " " + mainScript.path.fileName + "\n" +
                 inc.joinToString("") { script ->
-                    script.checksum + " " + when (val baseDir = mainScript.path.parent) {
-                        null -> script.path.fileName
-                        else -> baseDir.relativize(script.path)
-                    } + "\n"
+                    script.checksum + " " + script.path + "\n"
                 }
         val jvmTargetInfo = if (jvmTarget == null) "" else "-java$jvmTarget"
         return ("sha256=" + input.sha256).let { checksum ->

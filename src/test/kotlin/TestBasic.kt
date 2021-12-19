@@ -11,16 +11,6 @@ class TestBasic {
     }
 
     @Test
-    fun `run with everything cached`() {
-        compileOk()
-        runScript(
-            "test_all_cached.out",
-            "env", *env, "script_file=test.kt",
-            zsh, "-xy", "test.kt"
-        )
-    }
-
-    @Test
     fun `fail on compiler error`() = assertThat {
         baseDir.resolve("test_err.kt").writeText("hello there\n")
         runScript(

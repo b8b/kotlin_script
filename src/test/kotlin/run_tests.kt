@@ -43,6 +43,7 @@ fi
 ///DEP=org.opentest4j:opentest4j:1.2.0
 
 ///INC=TestBasic.kt
+///INC=TestCachePath.kt
 ///INC=TestNoFetchTool.kt
 ///INC=TestInvalidHome.kt
 
