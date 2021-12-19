@@ -36,6 +36,8 @@ fi
 ///DEP=org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.6.0
 ///DEP=org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.6.0
 
+///DEP=org.apache.bcel:bcel:6.5.0
+
 ///DEP=com.willowtreeapps.assertk:assertk-jvm:0.25
 ///DEP=com.willowtreeapps.opentest4k:opentest4k-jvm:1.2.2
 ///DEP=org.opentest4j:opentest4j:1.2.0
@@ -44,6 +46,7 @@ fi
 ///INC=TestNoFetchTool.kt
 ///INC=TestInvalidHome.kt
 
+import org.apache.bcel.classfile.ClassParser
 import java.io.IOException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -362,7 +365,7 @@ private fun test(instance: Any?, method: Method, name: String) {
 }
 
 private fun ClassLoader.findClasses(
-    predicate: (String) -> Boolean = { true }
+    predicate: (String, String) -> Boolean = { _, _ -> true }
 ): Sequence<String> {
     val allResources = getResources("").asSequence() +
             getResources("META-INF/MANIFEST.MF").asSequence()
@@ -370,25 +373,33 @@ private fun ClassLoader.findClasses(
         val uri = r.toString()
         if (uri.startsWith("jar:file:")) {
             val jar = uri.substringBeforeLast("!").removePrefix("jar:file:")
-            ZipFile(jar).entries().asSequence().mapNotNull { entry ->
-                if (entry.name.endsWith(".class")) {
-                    entry.name.split('/').filter { c ->
+            ZipFile(jar).use { zf ->
+                val selectedEntries = mutableListOf<String>()
+                for (ze in zf.entries().asSequence()) {
+                    if (!ze.name.endsWith(".class")) continue
+                    val cn = ze.name.split('/').filter { c ->
                         c.isNotBlank()
                     }.joinToString(".")
                         .removeSuffix(".class")
-                        .takeIf(predicate)
-                } else {
-                    null
+                    val sfn = ClassParser(zf.getInputStream(ze), ze.name)
+                        .parse().sourceFileName
+                    if (!predicate(cn, sfn)) continue
+                    selectedEntries += cn
                 }
+                selectedEntries.asSequence()
             }
         } else if (uri.startsWith("file:")) {
             val p = Paths.get(r.toURI())
             Files.walk(p).asSequence().mapNotNull { f ->
                 if (f.fileName.toString().endsWith(".class")) {
-                    (p.nameCount until f.nameCount)
+                    val cn = (p.nameCount until f.nameCount)
                         .joinToString(".") { i -> "${f.getName(i)}" }
                         .removeSuffix(".class")
-                        .takeIf(predicate)
+                    val sfn = Files.newInputStream(f).use { `in` ->
+                        ClassParser(`in`, f.toString())
+                            .parse().sourceFileName
+                    }
+                    if (predicate(cn, sfn)) cn else null
                 } else {
                     null
                 }
@@ -402,9 +413,10 @@ private fun ClassLoader.findClasses(
 
 fun main(args: Array<String>) {
     val classLoader = Thread.currentThread().contextClassLoader
-    val testClasses = classLoader.findClasses() { className ->
+    val testClasses = classLoader.findClasses { className, fileName ->
         className.substringAfterLast(".").startsWith("Test") &&
-                (args.isEmpty() || className.substringAfterLast('.') in args)
+                (args.isEmpty() || className.substringAfterLast('.') in args ||
+                        args.any { arg -> Paths.get(arg).fileName.toString() == fileName })
     }
     for (className in testClasses.sorted()) {
         val clazz = Class.forName(className)

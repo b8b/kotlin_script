@@ -50,6 +50,7 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7")
     testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    testImplementation("org.apache.bcel:bcel:6.5.0")
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.25")
 
     examplesImplementation("org.cikit:kotlin_script:$version")
