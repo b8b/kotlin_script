@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.6.0"
+    val kotlinVersion = "1.6.10"
 
     kotlin("jvm") version kotlinVersion
     id("org.jetbrains.dokka") version "1.6.0"
@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "1.6.0.1"
+version = "1.6.10.15"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
