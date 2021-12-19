@@ -491,7 +491,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         }
 
         final String scriptName = args[0];
-        final String scriptFlags = System.getenv("$KOTLIN_SCRIPT_FLAGS");
+        final String scriptFlags = System.getenv("KOTLIN_SCRIPT_FLAGS");
         System.setProperty("kotlin_script.name", scriptName);
         if (scriptFlags == null) {
             System.setProperty("kotlin_script.flags", "");
