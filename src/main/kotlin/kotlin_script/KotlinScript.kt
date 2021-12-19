@@ -58,6 +58,11 @@ class KotlinScript(
     private val javaVersion =
         (System.getProperty("java.vm.specification.version") ?: "1.8")
 
+    private val jvmTarget = when (javaVersion) {
+        in supportedJavaVersions -> javaVersion
+        else -> supportedJavaVersions.last()
+    }
+
     private fun resolveLib(dep: Dependency): Path {
         val subPath = dep.subPath
         if (mavenRepoCache != null) {
@@ -114,11 +119,7 @@ class KotlinScript(
             "-Djava.awt.headless=true",
             "-cp", cp,
             kotlinCompilerMain,
-            "-jvm-target",
-            when (javaVersion) {
-                in supportedJavaVersions -> javaVersion
-                else -> supportedJavaVersions.last()
-            },
+            "-jvm-target", jvmTarget,
             "-no-reflect",
             "-no-stdlib"
         )
@@ -152,7 +153,7 @@ class KotlinScript(
     }
 
     fun jarCachePath(metaData: MetaData): Path =
-        localRepo.resolve(metaData.jarCachePath)
+        localRepo.resolve(metaData.jarCachePath(jvmTarget))
 
     fun compile(script: Script): MetaData {
         val runtimeClassPath = compilerClassPath.filter {
