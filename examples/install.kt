@@ -239,6 +239,15 @@ fun main(args: Array<String>) {
             w.flush()
             val zOut = ZipArchiveOutputStream(out)
             val tmpDir = Files.createTempDirectory("runner")
+            Files.createDirectories(tmpDir.resolve("META-INF"))
+            Files.newOutputStream(tmpDir.resolve("META-INF/MANIFEST.MF")).use { out ->
+                val mfStr = "Manifest-Version: 1.0\n" +
+                        "Implementation-Title: kotlin_script\n" +
+                        "Implementation-Version: $kotlinScriptVersion\n" +
+                        "Implementation-Vendor: cikit.org\n" +
+                        "Main-Class: kotlin_script.Runner\n"
+                out.write(canonicalizeManifest(mfStr.toByteArray()))
+            }
             try {
                 BatchCompiler.compile(
                     arrayOf(
@@ -281,12 +290,14 @@ fun main(args: Array<String>) {
                         return FileVisitResult.CONTINUE
                     }
                     override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                        val zeOut = ZipArchiveEntry(tmpDir.relativize(dir).toString() + "/")
-                        zeOut.creationTime = FileTime.from(ts)
-                        zeOut.lastModifiedTime = zeOut.creationTime
-                        zeOut.lastAccessTime = zeOut.creationTime
-                        zOut.putArchiveEntry(zeOut)
-                        zOut.closeArchiveEntry()
+                        if (!Files.isSameFile(tmpDir, dir)) {
+                            val zeOut = ZipArchiveEntry(tmpDir.relativize(dir).toString() + "/")
+                            zeOut.creationTime = FileTime.from(ts)
+                            zeOut.lastModifiedTime = zeOut.creationTime
+                            zeOut.lastAccessTime = zeOut.creationTime
+                            zOut.putArchiveEntry(zeOut)
+                            zOut.closeArchiveEntry()
+                        }
                         return FileVisitResult.CONTINUE
                     }
                     override fun visitFileFailed(file: Path, exc: IOException?): FileVisitResult {
