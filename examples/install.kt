@@ -33,18 +33,16 @@ fi
 exit 2
 */
 
+///DEP=org.eclipse.jdt:ecj:3.28.0
 ///DEP=org.apache.commons:commons-compress:1.21
 
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileReader
-import java.io.OutputStream
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
+import org.eclipse.jdt.core.compiler.CompilationProgress
+import org.eclipse.jdt.core.compiler.batch.BatchCompiler
+import java.io.*
+import java.nio.file.*
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
 import java.time.Instant
@@ -239,7 +237,64 @@ fun main(args: Array<String>) {
                 }
             }
             w.flush()
-            canonicalizeJar(mainJar.parent.resolve("kotlin_script-$kotlinScriptVersion-runner.jar"), out, ts)
+            val zOut = ZipArchiveOutputStream(out)
+            val tmpDir = Files.createTempDirectory("runner")
+            try {
+                BatchCompiler.compile(
+                    arrayOf(
+                        "-d", tmpDir.toString(), "-encoding", "utf8",
+                        "-source", "1.8", "-target", "1.8", "-g", "runner"
+                    ),
+                    PrintWriter(System.out),
+                    PrintWriter(System.err),
+                    object : CompilationProgress() {
+                        override fun begin(remainingWork: Int) {
+                        }
+
+                        override fun done() {
+                        }
+
+                        override fun isCanceled(): Boolean = false
+                        override fun setTaskName(name: String?) {
+                        }
+
+                        override fun worked(workIncrement: Int, remainingWork: Int) {
+                        }
+                    }
+                )
+            } finally {
+                Files.walkFileTree(tmpDir, object : FileVisitor<Path> {
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        val zeOut = ZipArchiveEntry(tmpDir.relativize(file).toString())
+                        zeOut.creationTime = FileTime.from(ts)
+                        zeOut.lastModifiedTime = zeOut.creationTime
+                        zeOut.lastAccessTime = zeOut.creationTime
+                        zeOut.method = ZipArchiveEntry.DEFLATED
+                        zOut.putArchiveEntry(zeOut)
+                        Files.newInputStream(file).use { `in` -> `in`.copyTo(zOut) }
+                        zOut.closeArchiveEntry()
+                        Files.delete(file)
+                        return FileVisitResult.CONTINUE
+                    }
+                    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                        Files.delete(dir)
+                        return FileVisitResult.CONTINUE
+                    }
+                    override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        val zeOut = ZipArchiveEntry(tmpDir.relativize(dir).toString() + "/")
+                        zeOut.creationTime = FileTime.from(ts)
+                        zeOut.lastModifiedTime = zeOut.creationTime
+                        zeOut.lastAccessTime = zeOut.creationTime
+                        zOut.putArchiveEntry(zeOut)
+                        zOut.closeArchiveEntry()
+                        return FileVisitResult.CONTINUE
+                    }
+                    override fun visitFileFailed(file: Path, exc: IOException?): FileVisitResult {
+                        return FileVisitResult.CONTINUE
+                    }
+                })
+            }
+            zOut.close()
         }
     }
 

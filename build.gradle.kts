@@ -54,6 +54,7 @@ dependencies {
 
     examplesImplementation("org.cikit:kotlin_script:$version")
     examplesImplementation("org.apache.commons:commons-compress:1.21")
+    examplesImplementation("org.eclipse.jdt:ecj:3.28.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
     examplesImplementation("org.apache.sshd:sshd-netty:2.8.0")
     examplesImplementation("org.apache.sshd:sshd-git:2.8.0")
