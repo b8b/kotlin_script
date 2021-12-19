@@ -179,6 +179,88 @@ private fun canonicalizeJar(
     }
 }
 
+private fun compileRunner(
+    sources: Path, output: OutputStream, ts: Instant,
+    manifest: String
+) {
+    val tmpDir = Files.createTempDirectory("runner")
+    try {
+        BatchCompiler.compile(
+            arrayOf(
+                "-d", tmpDir.toString(), "-encoding", "utf8",
+                "-source", "1.8", "-target", "1.8", "-g", sources.toString()
+            ),
+            PrintWriter(System.out),
+            PrintWriter(System.err),
+            object : CompilationProgress() {
+                override fun begin(remainingWork: Int) {
+                }
+
+                override fun done() {
+                }
+
+                override fun isCanceled(): Boolean = false
+                override fun setTaskName(name: String?) {
+                }
+
+                override fun worked(workIncrement: Int, remainingWork: Int) {
+                }
+            }
+        )
+        Files.createDirectories(tmpDir.resolve("META-INF"))
+        Files.newOutputStream(tmpDir.resolve("META-INF/MANIFEST.MF")).use { mfOut ->
+            mfOut.write(canonicalizeManifest(manifest.toByteArray()))
+        }
+        val names = mutableListOf<String>()
+        Files.walk(tmpDir).forEach { f ->
+            if (f != tmpDir) {
+                if (Files.isDirectory(f)) {
+                    names.add(tmpDir.relativize(f).toString() + "/")
+                } else {
+                    names.add(tmpDir.relativize(f).toString())
+                }
+            }
+        }
+        names.sort()
+        val zOut = ZipArchiveOutputStream(output)
+        for (name in names) {
+            val zeOut = ZipArchiveEntry(name)
+            zeOut.creationTime = FileTime.from(ts)
+            zeOut.lastModifiedTime = zeOut.creationTime
+            zeOut.lastAccessTime = zeOut.creationTime
+            if (!name.endsWith("/")) {
+                zeOut.method = ZipArchiveEntry.DEFLATED
+                zOut.putArchiveEntry(zeOut)
+                Files.newInputStream(tmpDir.resolve(name)).use { `in` ->
+                    `in`.copyTo(zOut)
+                }
+            } else {
+                zOut.putArchiveEntry(zeOut)
+            }
+            zOut.closeArchiveEntry()
+        }
+        zOut.close()
+    } finally {
+        // cleanup temp dir
+        Files.walkFileTree(tmpDir, object : FileVisitor<Path> {
+            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                Files.delete(file)
+                return FileVisitResult.CONTINUE
+            }
+            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                Files.delete(dir)
+                return FileVisitResult.CONTINUE
+            }
+            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                return FileVisitResult.CONTINUE
+            }
+            override fun visitFileFailed(file: Path, exc: IOException?): FileVisitResult {
+                return FileVisitResult.CONTINUE
+            }
+        })
+    }
+}
+
 fun main(args: Array<String>) {
     val ts = getTimeStamp().toInstant()
     println("--> git timestamp is $ts")
@@ -237,75 +319,12 @@ fun main(args: Array<String>) {
                 }
             }
             w.flush()
-            val zOut = ZipArchiveOutputStream(out)
-            val tmpDir = Files.createTempDirectory("runner")
-            Files.createDirectories(tmpDir.resolve("META-INF"))
-            Files.newOutputStream(tmpDir.resolve("META-INF/MANIFEST.MF")).use { out ->
-                val mfStr = "Manifest-Version: 1.0\n" +
-                        "Implementation-Title: kotlin_script\n" +
-                        "Implementation-Version: $kotlinScriptVersion\n" +
-                        "Implementation-Vendor: cikit.org\n" +
-                        "Main-Class: kotlin_script.Runner\n"
-                out.write(canonicalizeManifest(mfStr.toByteArray()))
-            }
-            try {
-                BatchCompiler.compile(
-                    arrayOf(
-                        "-d", tmpDir.toString(), "-encoding", "utf8",
-                        "-source", "1.8", "-target", "1.8", "-g", "runner"
-                    ),
-                    PrintWriter(System.out),
-                    PrintWriter(System.err),
-                    object : CompilationProgress() {
-                        override fun begin(remainingWork: Int) {
-                        }
-
-                        override fun done() {
-                        }
-
-                        override fun isCanceled(): Boolean = false
-                        override fun setTaskName(name: String?) {
-                        }
-
-                        override fun worked(workIncrement: Int, remainingWork: Int) {
-                        }
-                    }
-                )
-            } finally {
-                Files.walkFileTree(tmpDir, object : FileVisitor<Path> {
-                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                        val zeOut = ZipArchiveEntry(tmpDir.relativize(file).toString())
-                        zeOut.creationTime = FileTime.from(ts)
-                        zeOut.lastModifiedTime = zeOut.creationTime
-                        zeOut.lastAccessTime = zeOut.creationTime
-                        zeOut.method = ZipArchiveEntry.DEFLATED
-                        zOut.putArchiveEntry(zeOut)
-                        Files.newInputStream(file).use { `in` -> `in`.copyTo(zOut) }
-                        zOut.closeArchiveEntry()
-                        Files.delete(file)
-                        return FileVisitResult.CONTINUE
-                    }
-                    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                        Files.delete(dir)
-                        return FileVisitResult.CONTINUE
-                    }
-                    override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                        if (!Files.isSameFile(tmpDir, dir)) {
-                            val zeOut = ZipArchiveEntry(tmpDir.relativize(dir).toString() + "/")
-                            zeOut.creationTime = FileTime.from(ts)
-                            zeOut.lastModifiedTime = zeOut.creationTime
-                            zeOut.lastAccessTime = zeOut.creationTime
-                            zOut.putArchiveEntry(zeOut)
-                            zOut.closeArchiveEntry()
-                        }
-                        return FileVisitResult.CONTINUE
-                    }
-                    override fun visitFileFailed(file: Path, exc: IOException?): FileVisitResult {
-                        return FileVisitResult.CONTINUE
-                    }
-                })
-            }
-            zOut.close()
+            val mfStr = "Manifest-Version: 1.0\n" +
+                    "Implementation-Title: kotlin_script\n" +
+                    "Implementation-Version: $kotlinScriptVersion\n" +
+                    "Implementation-Vendor: cikit.org\n" +
+                    "Main-Class: kotlin_script.Runner\n"
+            compileRunner(Paths.get("runner"), out, ts, mfStr)
         }
     }
 
