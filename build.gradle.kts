@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.6.0"
+    val kotlinVersion = "1.6.10"
 
     kotlin("jvm") version kotlinVersion
     id("org.jetbrains.dokka") version "1.6.0"
@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "1.6.0.1"
+version = "1.6.10.16"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -53,6 +53,8 @@ dependencies {
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.25")
 
     examplesImplementation("org.cikit:kotlin_script:$version")
+    examplesImplementation("org.apache.commons:commons-compress:1.21")
+    examplesImplementation("org.eclipse.jdt:ecj:3.16.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
     examplesImplementation("org.apache.sshd:sshd-netty:2.8.0")
     examplesImplementation("org.apache.sshd:sshd-git:2.8.0")
