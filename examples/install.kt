@@ -33,18 +33,24 @@ fi
 exit 2
 */
 
-import java.io.*
+///DEP=org.apache.commons:commons-compress:1.21
+
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
+import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileReader
+import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.jar.Manifest
-import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
 
 private fun Path.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
@@ -80,8 +86,104 @@ private fun getTimeStamp(): OffsetDateTime {
     return OffsetDateTime.parse(output.trim())
 }
 
+private fun canonicalizeManifest(data: ByteArray): ByteArray {
+    fun OutputStream.writeManifestEntry(bytes: ByteArray) {
+        var outIndex = 0
+        for (i in bytes.indices) {
+            write(bytes[i].toInt())
+            outIndex++
+            if (outIndex == 70) {
+                write(byteArrayOf(0x0D, 0x0A))
+                outIndex = 0
+                if (i == bytes.indices.last) return
+                write(0x20)
+                outIndex++
+            }
+        }
+        write(byteArrayOf(0x0D, 0x0A))
+    }
+    val entries = mutableMapOf<String, StringBuilder>()
+    var currentEntry = ""
+    for (line in String(data).split("\n").map { line -> line.removeSuffix("\r") }) {
+        if (line.isEmpty()) continue
+        if (line.first().isWhitespace()) {
+            entries.getValue(currentEntry).append(line.substring(1))
+            continue
+        }
+        currentEntry = line.substringBefore(':')
+        entries[currentEntry] = StringBuilder(line)
+    }
+    val order = listOf(
+        "Manifest-Version",
+        "Implementation-Title",
+        "Implementation-Vendor",
+        "Implementation-Version",
+        "Class-Path"
+    )
+    ByteArrayOutputStream().use { out ->
+        for (k in order) {
+            entries.remove(k)?.let {
+                val bytes = it.toString().toByteArray()
+                out.writeManifestEntry(bytes)
+            }
+        }
+        for ((_, line) in entries.entries.sortedBy { it.key }) {
+            val bytes = line.toString().toByteArray()
+            out.writeManifestEntry(bytes)
+        }
+        out.write(byteArrayOf(0x0D, 0x0A))
+        return out.toByteArray()
+    }
+}
+
+private fun canonicalizeJar(
+    input: Path, output: OutputStream, ts: Instant,
+    transformManifest: (Manifest) -> Unit = {}
+) {
+    ZipFile(input.toFile()).use { zf ->
+        val names = zf.entries().asSequence().map { it.name }.toMutableList()
+        names.sort()
+        ZipArchiveOutputStream(output).use { zout ->
+            for (name in names) {
+                val zeIn = zf.getEntry(name)
+                val zeOut = ZipArchiveEntry(name)
+                zeOut.creationTime = FileTime.from(ts)
+                zeOut.lastModifiedTime = zeOut.creationTime
+                zeOut.lastAccessTime = zeOut.creationTime
+                if (name == "META-INF/MANIFEST.MF") {
+                    val manifest = Manifest(zf.getInputStream(zeIn))
+                    transformManifest(manifest)
+                    val data = ByteArrayOutputStream().use { tmp ->
+                        manifest.write(tmp)
+                        canonicalizeManifest(tmp.toByteArray())
+                    }
+                    zeOut.size = data.size.toLong()
+                    zeOut.compressedSize = -1
+                    zout.putArchiveEntry(zeOut)
+                    zout.write(data)
+                } else {
+                    zeOut.size = zeIn.size
+                    zout.putArchiveEntry(zeOut)
+                    zf.getInputStream(zeIn).copyTo(zout)
+                }
+                zout.closeArchiveEntry()
+            }
+        }
+    }
+}
+
+private fun canonicalizeJar(
+    input: Path, output: Path, ts: Instant,
+    transformManifest: (Manifest) -> Unit = {}
+) {
+    Files.newOutputStream(output).use { out ->
+        canonicalizeJar(input, out, ts, transformManifest)
+    }
+}
+
 fun main(args: Array<String>) {
     val ts = getTimeStamp().toInstant()
+    println("--> git timestamp is $ts")
 
     val mainJar = Paths.get(args.single())
 
@@ -89,45 +191,11 @@ fun main(args: Array<String>) {
     val repo = home.resolve(".m2/repository")
 
     val tmp = Files.createTempFile("kotlin_script", ".jar")
-
-    ZipFile(mainJar.toFile()).use { z ->
-        val allEntries = mutableListOf<Pair<ZipEntry, ByteArray>>()
-        for (entry in z.entries()) {
-            entry.creationTime = FileTime.from(ts)
-            entry.lastAccessTime = entry.creationTime
-            entry.lastModifiedTime = entry.creationTime
-            if (entry.name == "META-INF/MANIFEST.MF") {
-                val manifest = z.getInputStream(entry).use { `in` -> Manifest(`in`) }
-                val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
-                        ?: error("no Kotlin-Compiler-Version in manifest")
-                val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
-                updateManifest(manifest, compilerLibDir)
-                val data = ByteArrayOutputStream().use { tmp ->
-                    manifest.write(tmp)
-                    tmp.toByteArray()
-                }
-                entry.size = data.size.toLong()
-                entry.compressedSize = -1
-                allEntries += entry to data
-            } else {
-                val data = ByteArrayOutputStream().use { tmp ->
-                    z.getInputStream(entry).use { `in` ->
-                        `in`.copyTo(tmp)
-                    }
-                    tmp.toByteArray()
-                }
-                allEntries += entry to data
-            }
-        }
-        allEntries.sortBy { it.first.name }
-        FileOutputStream(tmp.toFile()).use { out ->
-            ZipOutputStream(out).use { zout ->
-                for ((entry, data) in allEntries) {
-                    zout.putNextEntry(entry)
-                    zout.write(data)
-                }
-            }
-        }
+    canonicalizeJar(mainJar, tmp, ts) { manifest ->
+        val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
+            ?: error("no Kotlin-Compiler-Version in manifest")
+        val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
+        updateManifest(manifest, compilerLibDir)
     }
 
     val manifest = ZipFile(mainJar.toFile()).use { z ->
@@ -154,30 +222,7 @@ fun main(args: Array<String>) {
             "kotlin_script-$kotlinScriptVersion-javadoc.jar",
             "kotlin_script-$kotlinScriptVersion-sources.jar"
     )) {
-        ZipFile(mainJar.parent.resolve(item).toFile()).use { z ->
-            val allEntries = mutableListOf<Pair<ZipEntry, ByteArray>>()
-            for (entry in z.entries()) {
-                entry.creationTime = FileTime.from(ts)
-                entry.lastAccessTime = entry.creationTime
-                entry.lastModifiedTime = entry.creationTime
-                val data = ByteArrayOutputStream().use { tmp ->
-                    z.getInputStream(entry).use { `in` ->
-                        `in`.copyTo(tmp)
-                    }
-                    tmp.toByteArray()
-                }
-                allEntries += entry to data
-            }
-            allEntries.sortBy { it.first.name }
-            Files.newOutputStream(repoKotlinScript.resolve(item)).use { out ->
-                ZipOutputStream(out).use { zout ->
-                    for ((entry, data) in allEntries) {
-                        zout.putNextEntry(entry)
-                        zout.write(data)
-                    }
-                }
-            }
-        }
+        canonicalizeJar(mainJar.parent.resolve(item), repoKotlinScript.resolve(item), ts)
     }
 
     val scriptTgt = repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.sh")
@@ -194,28 +239,7 @@ fun main(args: Array<String>) {
                 }
             }
             w.flush()
-            ZipFile(mainJar.parent.resolve("kotlin_script-$kotlinScriptVersion-runner.jar").toFile()).use { z ->
-                val allEntries = mutableListOf<Pair<ZipEntry, ByteArray>>()
-                for (entry in z.entries()) {
-                    entry.creationTime = FileTime.from(ts)
-                    entry.lastAccessTime = entry.creationTime
-                    entry.lastModifiedTime = entry.creationTime
-                    val data = ByteArrayOutputStream().use { tmp ->
-                        z.getInputStream(entry).use { `in` ->
-                            `in`.copyTo(tmp)
-                        }
-                        tmp.toByteArray()
-                    }
-                    allEntries += entry to data
-                }
-                allEntries.sortBy { it.first.name }
-                ZipOutputStream(out).use { zout ->
-                    for ((entry, data) in allEntries) {
-                        zout.putNextEntry(entry)
-                        zout.write(data)
-                    }
-                }
-            }
+            canonicalizeJar(mainJar.parent.resolve("kotlin_script-$kotlinScriptVersion-runner.jar"), out, ts)
         }
     }
 
