@@ -34,7 +34,7 @@ data class MetaData(
         return ("sha256=" + input.sha256).let { checksum ->
             Paths.get(
                 "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
-                "kotlin_script_cache-$kotlinScriptVersion-$jvmTargetInfo$checksum.jar"
+                "kotlin_script_cache-$kotlinScriptVersion$jvmTargetInfo-$checksum.jar"
             )
         }
     }
