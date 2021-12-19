@@ -33,7 +33,7 @@ fi
 exit 2
 */
 
-///DEP=org.eclipse.jdt:ecj:3.28.0
+///DEP=org.eclipse.jdt:ecj:3.16.0
 ///DEP=org.apache.commons:commons-compress:1.21
 
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
