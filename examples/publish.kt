@@ -129,11 +129,12 @@ fun main(args: Array<String>) {
 
     val libDir = Paths.get(System.getProperty("user.home"), ".m2", "repository", subDir)
     val filesToPublish = listOf(
-            Item("$libDir/kotlin_script-$v.pom"),
-            Item("$libDir/kotlin_script-$v.sh"),
-            Item("$libDir/kotlin_script-$v.jar"),
-            Item("$libDir/kotlin_script-$v-sources.jar"),
-            Item("$libDir/kotlin_script-$v-javadoc.jar")
+        Item("$libDir/kotlin_script-$v.pom"),
+        Item("$libDir/kotlin_script-$v.sh"),
+        Item("$libDir/kotlin_script-$v.jar"),
+        Item("$libDir/kotlin_script-$v-sources.jar"),
+        Item("$libDir/kotlin_script-$v-javadoc.jar"),
+        Item("$libDir/kotlin_script-$v-main-kts-compat.jar")
     )
 
     for (item in filesToPublish) {
