@@ -45,6 +45,9 @@ data class Dependency(
 
 fun parseDependency(spec: String): Dependency {
     val parts = spec.split(':')
+    if (parts.size == 2) {
+        return Dependency(parts[0], parts[1], "")
+    }
     if (parts.size < 3)
         throw IllegalArgumentException("invalid dependency spec: $spec")
     val groupId = parts[0]

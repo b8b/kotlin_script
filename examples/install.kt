@@ -299,8 +299,9 @@ fun main(args: Array<String>) {
     Files.move(tmp, mainJarTgt, StandardCopyOption.REPLACE_EXISTING)
 
     for (item in listOf(
-            "kotlin_script-$kotlinScriptVersion-javadoc.jar",
-            "kotlin_script-$kotlinScriptVersion-sources.jar"
+        "kotlin_script-$kotlinScriptVersion-javadoc.jar",
+        "kotlin_script-$kotlinScriptVersion-sources.jar",
+        "kotlin_script-$kotlinScriptVersion-main-kts-compat.jar"
     )) {
         canonicalizeJar(mainJar.parent.resolve(item), repoKotlinScript.resolve(item), ts)
     }

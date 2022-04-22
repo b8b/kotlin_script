@@ -40,7 +40,7 @@ class KotlinScript(
             .flatMap { url ->
                 url.openStream().use { `in` ->
                     Manifest(`in`).mainAttributes.filter { entry ->
-                        "kotlin" in entry.key.toString().toLowerCase()
+                        "kotlin" in entry.key.toString().lowercase()
                     }.map { entry ->
                         entry.key.toString() to entry.value.toString()
                     }.asSequence()
@@ -49,8 +49,17 @@ class KotlinScript(
 
     private val compilerClassPath = manifest["Kotlin-Compiler-Class-Path"]
             ?.split(' ')
-            ?.map { spec -> parseDependency(spec).copy(scope = Scope.Runtime) }
+            ?.map { spec -> parseDependency(spec) }
             ?: error("no compiler classpath in manifest")
+
+    private val kotlinGroupId = "org.jetbrains.kotlin"
+
+    private val kotlinCompilerVersion = compilerClassPath.firstNotNullOf { d ->
+        d.version.takeIf {
+            d.groupId == kotlinGroupId &&
+                    d.artifactId == "kotlin-compiler-embeddable"
+        }
+    }
 
     private val kotlinScriptVersion = manifest["Kotlin-Script-Version"]
             ?: error("no Kotlin-Script-Version in manifest")
@@ -108,17 +117,34 @@ class KotlinScript(
         return f
     }
 
-    private fun kotlinCompilerArgs(): Array<String> {
-        val cp = compilerClassPath.joinToString(File.pathSeparator) { d ->
-            val f = resolveLib(d)
-            //TODO use correct quoting
-            f.toAbsolutePath().toString()
+    private fun kotlinCompilerArgs(scriptFileName: String, plugins: List<Path>): Array<String> {
+        val scriptCompilerClassPath = if (scriptFileName.endsWith(".kts")) {
+            listOf(
+                "kotlin-scripting-compiler-embeddable",
+                "kotlin-scripting-compiler-impl-embeddable",
+                "kotlin-scripting-common",
+                "kotlin-scripting-jvm"
+            ).map { Dependency(kotlinGroupId, it, kotlinCompilerVersion) }
+        } else {
+            emptyList()
         }
+        val cp = (compilerClassPath + scriptCompilerClassPath)
+            .joinToString(File.pathSeparator) { d ->
+                val f = resolveLib(d)
+                //TODO use correct quoting
+                f.toAbsolutePath().toString()
+            }
+        val scriptCompilerPlugin =
+            scriptCompilerClassPath.firstOrNull()?.let(::resolveLib)
         return arrayOf(
             javaHome.resolve("bin/java").toAbsolutePath().toString(),
             "-Djava.awt.headless=true",
             "-cp", cp,
             kotlinCompilerMain,
+            *listOfNotNull(
+                scriptCompilerPlugin,
+                *plugins.toTypedArray()
+            ).map { "-Xplugin=${it.toAbsolutePath()}" }.toTypedArray(),
             "-jvm-target", jvmTarget,
             "-no-reflect",
             "-no-stdlib"
@@ -156,11 +182,32 @@ class KotlinScript(
         localRepo.resolve(metaData.jarCachePath(jvmTarget))
 
     fun compile(script: Script): MetaData {
-        val runtimeClassPath = compilerClassPath.filter {
+        val scriptFileName = script.path.fileName.toString()
+        val scriptFileArgs = when (scriptFileName.substringAfterLast('.')) {
+            "kt", "kts" -> listOf(scriptFileName)
+            else -> emptyList()
+        }
+        val addClassPath = compilerClassPath.filter {
             it.artifactId in listOf("kotlin-stdlib", "kotlin-reflect")
+        } + if (scriptFileName.endsWith(".kts")) {
+            listOf(
+                Dependency(
+                    kotlinGroupId,
+                    "kotlin-script-runtime",
+                    kotlinCompilerVersion
+                ),
+                Dependency(
+                    "org.cikit",
+                    "kotlin_script",
+                    version = kotlinScriptVersion,
+                    classifier = "main-kts-compat"
+                )
+            )
+        } else {
+            emptyList()
         }
         val metaData = parseMetaData(kotlinScriptVersion, script).let { md ->
-            md.copy(dep = runtimeClassPath + md.dep)
+            md.copy(dep = addClassPath + md.dep)
         }
         val targetFile = jarCachePath(metaData)
         if (!force && Files.isReadable(targetFile)) return metaData
@@ -212,13 +259,8 @@ class KotlinScript(
         }
 
         // call compiler
-        val scriptFileName = script.path.fileName.toString()
-        val scriptFileArgs = when (scriptFileName.endsWith(".kt")) {
-            true -> listOf(scriptFileName)
-            else -> emptyList()
-        }
         val compileClassPath = (
-                runtimeClassPath + metaData.dep.filter { d ->
+                addClassPath + metaData.dep.filter { d ->
                     d.scope == Scope.Compile
                 }).map { d -> resolveLib(d).toAbsolutePath() }
         val compileClassPathArgs = when {
@@ -228,10 +270,20 @@ class KotlinScript(
                     compileClassPath.joinToString(File.pathSeparator)
             )
         }
+        val plugins = metaData.dep.filter { d ->
+            d.scope == Scope.Plugin
+        }.map { d ->
+            val addVersion = if (d.version.isBlank()) {
+                d.copy(version = kotlinCompilerVersion)
+            } else {
+                d
+            }
+            resolveLib(addVersion).toAbsolutePath()
+        }
         val (rc, compilerErrors) = if (scriptFileArgs.isNotEmpty()
                 || incArgs.isNotEmpty()) {
             val compilerArgs: List<String> = listOf(
-                    *kotlinCompilerArgs(),
+                    *kotlinCompilerArgs(scriptFileName, plugins),
                     *compileClassPathArgs.toTypedArray(),
                     "-d", tmp.toAbsolutePath().toString(),
                     *scriptFileArgs.toTypedArray(),
@@ -263,7 +315,7 @@ class KotlinScript(
         // embed metadata into jar
         metaData.storeToFile(tmp.resolve("kotlin_script.metadata"))
         val mainClass = metaData.main
-        val classPath = metaData.dep.filter {
+        val classPath = addClassPath + metaData.dep.filter {
             it.scope in listOf(Scope.Compile, Scope.Runtime)
         }.map {
             val libFile = resolveLib(it)
@@ -283,8 +335,14 @@ class KotlinScript(
             Attributes.Name.MANIFEST_VERSION.let { key ->
                 if (!contains(key)) put(key, "1.0")
             }
-            Attributes.Name.MAIN_CLASS.let { key ->
-                put(key, mainClass)
+            if (scriptFileName.endsWith(".kts")) {
+                Attributes.Name("Main-Kts-Class").let { key ->
+                    put(key, mainClass)
+                }
+            } else {
+                Attributes.Name.MAIN_CLASS.let { key ->
+                    put(key, mainClass)
+                }
             }
             Attributes.Name.CLASS_PATH.let { key ->
                 if (classPath.isNotEmpty()) {

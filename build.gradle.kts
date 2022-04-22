@@ -3,15 +3,15 @@ import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.6.10"
+    val kotlinVersion = "1.6.21"
 
     kotlin("jvm") version kotlinVersion
-    id("org.jetbrains.dokka") version "1.6.0"
+    id("org.jetbrains.dokka") version "1.6.20"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.6.10.17"
+version = "1.6.21.18"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -23,6 +23,11 @@ repositories {
 }
 
 sourceSets {
+    create("mainKtsCompat") {
+        java {
+            srcDir("main-kts-compat")
+        }
+    }
     create("runner") {
         java {
             srcDir("runner")
@@ -78,6 +83,7 @@ compileTestKotlin.kotlinOptions {
 }
 
 val main by sourceSets
+val mainKtsCompat by sourceSets
 val runner by sourceSets
 
 val sourcesJar by tasks.creating(Jar::class) {
@@ -93,12 +99,23 @@ val dokkaJar by tasks.creating(Jar::class) {
     from(tasks["dokkaJavadoc"])
 }
 
+val mainKtsCompatJar by tasks.creating(Jar::class) {
+    group = "build"
+    archiveClassifier.set("main-kts-compat")
+    from(mainKtsCompat.output)
+    manifest {
+        attributes["Implementation-Title"] = "kotlin_script.main-kts-compat"
+        attributes["Implementation-Version"] = archiveVersion
+        attributes["Implementation-Vendor"] = "cikit.org"
+    }
+}
+
 val runnerJar by tasks.creating(Jar::class) {
     group = "build"
     archiveClassifier.set("runner")
     from(runner.output)
     manifest {
-        attributes["Implementation-Title"] = "kotlin_script"
+        attributes["Implementation-Title"] = "kotlin_script.runner"
         attributes["Implementation-Version"] = archiveVersion
         attributes["Implementation-Vendor"] = "cikit.org"
         attributes["Main-Class"] = "kotlin_script.Runner"

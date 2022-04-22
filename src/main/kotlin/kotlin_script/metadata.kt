@@ -113,13 +113,19 @@ fun parseMetaData(kotlinScriptVersion: String, mainScript: Script): MetaData {
         kotlinScriptVersion = kotlinScriptVersion,
         main = metaDataMap["MAIN"]?.singleOrNull()
             ?: mainScript.path.fileName.toString().let { name ->
-                if (name.length > 3 && name.endsWith(".kt")) {
-                    val trimmed = name.trim().removeSuffix(".kt")
-                    trimmed.first().toUpperCase() +
-                            trimmed.substring(1) +
-                            "Kt"
-                } else {
-                    null
+                when {
+                    name.endsWith(".kts") -> {
+                        val trimmed = name.trim().removeSuffix(".kts")
+                        trimmed.first().uppercaseChar() +
+                                trimmed.substring(1).replace('.', '_')
+                    }
+                    name.length > 3 && name.endsWith(".kt") -> {
+                        val trimmed = name.trim().removeSuffix(".kt")
+                        trimmed.first().uppercaseChar() +
+                                trimmed.substring(1) +
+                                "Kt"
+                    }
+                    else -> null
                 }
             } ?: throw IllegalArgumentException("missing MAIN in meta data"),
         mainScript = mainScript,

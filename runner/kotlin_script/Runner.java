@@ -2,6 +2,7 @@ package kotlin_script;
 
 import javax.net.ssl.*;
 import java.io.*;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -26,6 +27,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
 
     private final String javaVersion;
     private final boolean trace;
+    private final boolean force;
     private final boolean progress;
 
     private final String centralRepo;
@@ -78,9 +80,11 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         final String kotlinScriptFlagsEnv = System.getProperty("kotlin_script.flags");
         if (kotlinScriptFlagsEnv != null) {
             this.trace = kotlinScriptFlagsEnv.contains("-x");
+            this.force = kotlinScriptFlagsEnv.contains("-f");
             this.progress = kotlinScriptFlagsEnv.contains("-P");
         } else {
             this.trace = false;
+            this.force = false;
             this.progress = false;
         }
 
@@ -312,7 +316,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
     }
 
     private void executeCachedJar(Path compiledJar, String[] args) throws IOException, ClassNotFoundException,
-            NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+            NoSuchMethodException, InstantiationException, InvocationTargetException, IllegalAccessException {
         final Path scriptDir;
         if (scriptFile.getParent() == null) {
             scriptDir = Paths.get(".");
@@ -326,6 +330,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         }
         final List<String> dependencies = new ArrayList<>();
         final List<String> includes = new ArrayList<>();
+        final boolean executeKts = scriptFile.getFileName().toString().endsWith(".kts");
         String mainClass = null;
         try (BufferedReader reader = Files.newBufferedReader(scriptMetadata)) {
             while (true) {
@@ -348,16 +353,27 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         if (mainClass == null) {
             final StringBuilder sb = new StringBuilder();
             final String fn = scriptFile.getFileName().toString();
-            int i = fn.indexOf('.');
-            if (i < 0) {
-                i = fn.length();
-            }
             if (fn.length() > 0) {
                 sb.append(fn.substring(0, 1).toUpperCase());
-                sb.append(fn, 1, i);
             }
-            sb.append("Kt");
-            mainClass = sb.toString();
+            int fromIndex = 1;
+            while (fromIndex < fn.length()) {
+                int i = fn.indexOf('.', fromIndex);
+                if (i < 0) {
+                    sb.append(fn.substring(fromIndex));
+                    break;
+                }
+                sb.append(fn, fromIndex, i);
+                sb.append('_');
+            }
+            final String s = sb.toString();
+            if (s.endsWith("_kt")) {
+                mainClass = s.substring(0, s.length() - 3) + "Kt";
+            } else if (s.endsWith("_kts")) {
+                mainClass = s.substring(0, s.length() - 4);
+            } else {
+                mainClass = s;
+            }
         }
 
         // check dependencies
@@ -425,14 +441,23 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         }
 
         if (trace) {
-            System.err.println("++ main " + Arrays.toString(args));
+            if (executeKts) {
+                System.err.println("++ " + mainClass + "(" + Arrays.toString(args) + ")");
+            } else {
+                System.err.println("++ " + mainClass + ".main(" + Arrays.toString(args) + ")");
+            }
         }
         classPath[0] = jarToExecute.toUri().toURL();
         final URLClassLoader cl = new URLClassLoader(classPath, Runner.class.getClassLoader());
         Thread.currentThread().setContextClassLoader(cl);
         final Class<?> clazz = cl.loadClass(mainClass);
-        final Method mainMethod = clazz.getMethod("main", String[].class);
-        mainMethod.invoke(null, (Object) args);
+        if (executeKts) {
+            final Constructor<?> c = clazz.getConstructor(String[].class);
+            c.newInstance((Object) args);
+        } else {
+            final Method mainMethod = clazz.getMethod("main", String[].class);
+            mainMethod.invoke(null, (Object) args);
+        }
     }
 
     private Path executeCompiler() throws IOException, ClassNotFoundException,
@@ -503,20 +528,22 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         final String[] scriptArgs = new String[args.length - 1];
         System.arraycopy(args, 1, scriptArgs, 0, args.length - 1);
 
-        try {
-            runner.executeCachedJar(null, scriptArgs);
-            return;
-        } catch (InvocationTargetException e) {
-            final Throwable cause = e.getCause();
-            if (cause == null) {
-                throw e;
+        if (!runner.force) {
+            try {
+                runner.executeCachedJar(null, scriptArgs);
+                return;
+            } catch (InvocationTargetException e) {
+                final Throwable cause = e.getCause();
+                if (cause == null) {
+                    throw e;
+                }
+                if (cause instanceof RuntimeException) {
+                    throw (RuntimeException) cause;
+                }
+                throw new RuntimeException(cause);
+            } catch (Exception e) {
+                // execute cached jar failed -> run compiler
             }
-            if (cause instanceof RuntimeException) {
-                throw (RuntimeException) cause;
-            }
-            throw new RuntimeException(cause);
-        } catch (Exception e) {
-            // execute cached jar failed -> run compiler
         }
 
         final Path targetJar;
