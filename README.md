@@ -10,7 +10,7 @@ You can easily install any version of `kotlin_script` (linked with any
  kotlin version) with the following gradle task.
  
 ```
-v=1.6.21.18
+v=1.8.10.18
 ./gradlew jar mainKtsCompatJar runnerJar sourcesJar dokkaJar copyDependencies
 
 # run install script with embedded kotlin_script installer
@@ -43,7 +43,7 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.6.21.18
+v=1.8.10.18
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -58,7 +58,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "c37b0a96dadf8039f63779c0754217f08dd9b811e38794bb1ede500774dac8ab "*) ;;
+  "11ffc2591a99e21602953ba2ebda001237d5953fba547227748c4fdf4a5d4faf "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac

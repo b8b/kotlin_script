@@ -244,6 +244,7 @@ class TaskExecutor(
             when (val result = results[d.asDependency()]) {
                 is ExecutionState.Failed -> list[d] = result.exception
                 is ExecutionState.Skipped -> collectExceptions(list, d)
+                else -> {}
             }
         }
     }

@@ -1,17 +1,16 @@
-import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.6.21"
+    val kotlinVersion = "1.8.10"
 
     kotlin("jvm") version kotlinVersion
-    id("org.jetbrains.dokka") version "1.6.20"
+    id("org.jetbrains.dokka") version kotlinVersion
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.6.21.18"
+version = "1.8.10.18"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -34,9 +33,8 @@ sourceSets {
         }
     }
     create("examples") {
-        withConvention(KotlinSourceSet::class) {
-            kotlin.setSrcDirs(listOf("examples"))
-            Unit
+        kotlin {
+            srcDir("examples")
         }
     }
 }
@@ -51,29 +49,28 @@ fun DependencyHandler.examplesImplementation(dependencyNotation: Any): Dependenc
         add("examplesImplementation", dependencyNotation)
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation(kotlin("stdlib"))
 
-    testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7")
-    testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    testImplementation("org.apache.bcel:bcel:6.5.0")
+    testImplementation("org.apache.bcel:bcel:6.6.0")
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.25")
 
     examplesImplementation("org.cikit:kotlin_script:$version")
     examplesImplementation("org.apache.commons:commons-compress:1.21")
-    examplesImplementation("org.eclipse.jdt:ecj:3.16.0")
+    examplesImplementation("org.eclipse.jdt:ecj:3.33.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
-    examplesImplementation("org.apache.sshd:sshd-netty:2.8.0")
-    examplesImplementation("org.apache.sshd:sshd-git:2.8.0")
+    examplesImplementation("org.apache.sshd:sshd-netty:2.9.0")
+    examplesImplementation("org.apache.sshd:sshd-git:2.9.0")
     examplesImplementation("net.i2p.crypto:eddsa:0.3.0")
-    examplesImplementation("org.bouncycastle:bcpkix-jdk15on:1.69")
-    examplesImplementation("io.vertx:vertx-core:4.2.1")
-    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.13.0")
-    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:3.3.0")
+    examplesImplementation("org.bouncycastle:bcpkix-jdk15on:1.70")
+    examplesImplementation("io.vertx:vertx-core:4.4.0")
+    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.14.2")
+    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:3.5.2")
 }
 
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jdkHome = properties["jdk.home"]?.toString()?.takeIf { it != "unspecified" }
+    //jdkHome = properties["jdk.home"]?.toString()?.takeIf { it != "unspecified" }
+
     jvmTarget = "1.8"
 }
 
