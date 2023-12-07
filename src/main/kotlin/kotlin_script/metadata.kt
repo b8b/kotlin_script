@@ -16,24 +16,21 @@ data class MetaData(
     val dep: List<Dependency>,
     val compilerArgs: List<String> = listOf(),
 ) {
-    fun jarCachePath(jvmTarget: String? = null): Path {
-        if (inc.isEmpty()) return mainScript.checksum.let { checksum ->
-            Paths.get(
-                "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
-                "kotlin_script_cache-$kotlinScriptVersion-$checksum.jar"
-            )
+    fun jarCachePath(jvmTarget: String): Path {
+        val checksum = if (inc.isEmpty()) {
+            mainScript.checksum
+        } else {
+            val input = mainScript.checksum + " " + mainScript.path.fileName + "\n" +
+                    inc.joinToString("") { script ->
+                        script.checksum + " " + script.path + "\n"
+                    }
+            "sha256=" + input.sha256
         }
-        val input = mainScript.checksum + " " + mainScript.path.fileName + "\n" +
-                inc.joinToString("") { script ->
-                    script.checksum + " " + script.path + "\n"
-                }
-        val jvmTargetInfo = if (jvmTarget == null) "" else "-java$jvmTarget"
-        return ("sha256=" + input.sha256).let { checksum ->
-            Paths.get(
-                "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
-                "kotlin_script_cache-$kotlinScriptVersion$jvmTargetInfo-$checksum.jar"
-            )
-        }
+        val jvmTargetInfo = "-java$jvmTarget"
+        return Paths.get(
+            "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
+            "kotlin_script_cache-$kotlinScriptVersion$jvmTargetInfo-$checksum.jar"
+        )
     }
 
     private val String.sha256
@@ -85,7 +82,10 @@ data class MetaData(
     }
 }
 
-fun parseMetaData(kotlinScriptVersion: String, mainScript: Script): MetaData {
+internal fun parseMetaData(
+    kotlinScriptVersion: String,
+    mainScript: Script
+): MetaData {
     val metaDataMap = ByteArrayInputStream(mainScript.data).use { `in` ->
         `in`.bufferedReader().lineSequence().filter { line ->
             line.startsWith("///")

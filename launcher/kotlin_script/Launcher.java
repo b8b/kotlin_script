@@ -23,19 +23,55 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class Runner implements X509TrustManager, HostnameVerifier {
+public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
 
     private final String javaVersion;
     private final boolean trace;
     private final boolean force;
     private final boolean progress;
 
+    private String progressMsg;
+    private long progressTotal;
+    private long progressDone;
+    private final Object progressLock = new Object();
+    private Thread progressThread;
+
     private final String centralRepo;
     private final Path localMirror;
     private final Path localRepo;
 
-    private final String kotlinScriptVersion;
+    private final String kotlinVersion = "1.9.21";
+    private final String kotlinScriptVersion = kotlinVersion + ".19";
     private final Path cacheDir;
+
+    private final String[] dependencies = new String[] {
+            "org/cikit/kotlin_script/1.9.21.19/kotlin_script-1.9.21.19.jar",
+            "com/github/ajalt/mordant/mordant-jvm/2.2.0/mordant-jvm-2.2.0.jar",
+            "com/github/ajalt/colormath/colormath-jvm/3.3.1/colormath-jvm-3.3.1.jar",
+            "org/jetbrains/markdown-jvm/0.5.2/markdown-jvm-0.5.2.jar",
+            "org/jetbrains/kotlin/kotlin-stdlib/1.9.21/kotlin-stdlib-1.9.21.jar",
+            "net/java/dev/jna/jna/5.13.0/jna-5.13.0.jar",
+            "it/unimi/dsi/fastutil-core/8.5.12/fastutil-core-8.5.12.jar",
+    };
+
+    private final byte[][] checksums = new byte[][] {
+            new byte[]{-43, 77, 33, -102, 38, 16, -95, 90, 34, 54, -31, 62, -5, -96, -109, 32, -40, -71, 103, 120, 96, 83, -84, 5, 106, 16, 45, -40, -77, 37, -72, -59},
+            new byte[]{47, -91, -98, 91, -127, -81, -52, 113, -74, -85, 97, 40, -78, 118, 118, -1, -58, 17, -48, -93, -63, -126, -21, -64, -28, 55, -77, 102, 106, -75, 98, 1},
+            new byte[]{38, 19, 40, 52, 21, -30, -31, 38, 97, 105, 125, -57, 41, 90, -38, -38, 15, 96, -20, 23, -20, -4, -81, 62, -15, -60, -18, 15, -37, 120, -119, 19},
+            new byte[]{114, 100, -124, 71, 114, 96, -91, 82, -36, 124, 25, -80, -99, 70, 86, -60, -118, -29, -79, 13, -78, 114, 80, 0, -31, -126, -42, 21, -107, 41, -76, 110},
+            new byte[]{59, 71, -109, 19, -85, 108, -82, -92, -27, -30, 93, 61, -18, -116, -88, 12, 48, 44, -119, -70, 115, -31, -81, 77, -81, -86, 16, 15, 110, -7, 41, 106},
+            new byte[]{102, -44, -8, 25, -96, 98, -91, 26, 29, 86, 39, -65, -4, 35, -6, -59, 93, 22, 119, -16, -32, -95, -2, -70, 20, 74, -85, -35, 103, 10, 100, -69},
+            new byte[]{-13, 28, 32, -11, -80, 99, 18, -13, -43, -32, 110, 97, 96, -93, 46, 39, 77, -127, -102, -90, -50, -65, 39, 82, -117, 38, -74, -75, -64, -63, -33, 25},
+    };
+    private final long[] sizes = new long[] {
+            67348L,
+            553121L,
+            353666L,
+            539307L,
+            1718945L,
+            1879325L,
+            6428331L,
+    };
 
     private SSLSocketFactory _sf = null;
     private final MessageDigest md;
@@ -45,7 +81,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
     private final String scriptFileSha256;
     private final Path scriptMetadata;
 
-    private Runner(Path scriptFile) throws NoSuchAlgorithmException, IOException {
+    private Launcher(Path scriptFile) throws NoSuchAlgorithmException, IOException {
         final String javaVersionProperty = System.getProperty("java.vm.specification.version");
         final String javaVersionDefault = "1.8";
         if (javaVersionProperty != null && isNotBlank(javaVersionProperty)) {
@@ -110,13 +146,6 @@ public class Runner implements X509TrustManager, HostnameVerifier {
             localRepo = userHome.resolve(".m2/repository");
         }
 
-        final String kotlinScriptVersionEnv = System.getenv("KOTLIN_SCRIPT_VERSION");
-        if (kotlinScriptVersionEnv != null && isNotBlank(kotlinScriptVersionEnv)) {
-            kotlinScriptVersion = kotlinScriptVersionEnv;
-        } else {
-            throw new IllegalStateException("KOTLIN_SCRIPT_VERSION environment variable not set");
-        }
-
         cacheDir = localRepo.resolve("org/cikit/kotlin_script_cache/" + kotlinScriptVersion);
 
         this.md = MessageDigest.getInstance("SHA-256");
@@ -165,6 +194,38 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         return new X509Certificate[0];
     }
 
+    @Override
+    public void run() {
+        String spinner = "|/-\\";
+        int offset = 0;
+        while (progressMsg != null) {
+            try {
+                synchronized (progressLock) {
+                    if (offset > 0) {
+                        System.err.write((byte) 0x0d);
+                    }
+                    System.err.write((byte) spinner.charAt((offset / 2) % spinner.length()));
+                    offset++;
+                    final String msg = String.format("   %.2f%%  %s",
+                            ((double) progressDone) / ((double) progressTotal) * 100.0,
+                            progressMsg);
+                    System.err.write(msg.getBytes(StandardCharsets.US_ASCII));
+                    System.err.flush();
+                    progressLock.wait(200);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+        }
+        if (offset > 0) {
+            System.err.write((byte) 0x0d);
+            System.err.flush();
+        }
+    }
+
     private void copy(InputStream in, OutputStream out, MessageDigest md) throws IOException {
         final byte[] buffer = new byte[4096];
         while (true) {
@@ -172,12 +233,18 @@ public class Runner implements X509TrustManager, HostnameVerifier {
             if (read < 0) {
                 break;
             }
+            if (progressTotal > 0L) {
+                synchronized (progressLock) {
+                    progressDone += read;
+                    progressLock.notify();
+                }
+            }
             md.update(buffer, 0, read);
             out.write(buffer, 0, read);
         }
     }
 
-    void fetch(String sourcePath, Path target, byte[] sha256) throws IOException {
+    private Path createTempFile(Path target) throws IOException {
         final Path targetDir;
         if (target.getParent() == null) {
             targetDir = Paths.get(".");
@@ -187,60 +254,67 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         if (!Files.isDirectory(targetDir)) {
             Files.createDirectories(targetDir);
         }
-        final Path tmp = Files.createTempFile(targetDir, target.getFileName().toString(), "~");
-        try {
-            boolean needFetch = true;
-            if (localMirror != null) {
-                try (OutputStream out = Files.newOutputStream(tmp)) {
-                    final Path source = localMirror.resolve(sourcePath);
-                    try (InputStream in = Files.newInputStream(source)) {
-                        if (trace) {
-                            System.err.println("++ cp " + source + " " + target);
-                        }
-                        md.reset();
-                        copy(in, out, md);
-                        final byte[] actualSha256 = md.digest();
-                        if (Arrays.equals(sha256, actualSha256)) {
-                            needFetch = false;
-                        }
-                    } catch (IOException e) {
-                        //ignored
-                    }
+        return Files.createTempFile(targetDir, target.getFileName().toString(), "~");
+    }
+
+    private boolean copyFromLocalMirror(String sourcePath, Path target, byte[] sha256) throws IOException {
+        final Path source = localMirror.resolve(sourcePath);
+        if (Files.isReadable(source)) {
+            return false;
+        }
+        try (InputStream in = Files.newInputStream(source)) {
+            final Path tmp = createTempFile(target);
+            try (OutputStream out = Files.newOutputStream(tmp)) {
+                if (trace) {
+                    System.err.println("++ cp " + source + " " + target);
                 }
+                md.reset();
+                copy(in, out, md);
+                final byte[] actualSha256 = md.digest();
+                if (Arrays.equals(sha256, actualSha256)) {
+                    return true;
+                }
+            } finally {
+                Files.deleteIfExists(tmp);
             }
-            if (needFetch) {
-                try (OutputStream out = Files.newOutputStream(tmp)) {
-                    final URL source = new URL(centralRepo + "/" + sourcePath);
-                    if (trace) {
-                        System.err.println("++ fetch -o " + target + " " + source);
-                    } else if (progress) {
-                        System.err.println("fetching " + source);
-                    }
-                    final URLConnection cn = source.openConnection();
-                    if (cn instanceof HttpsURLConnection) {
-                        ((HttpsURLConnection) cn).setSSLSocketFactory(getSocketFactory());
-                        ((HttpsURLConnection) cn).setHostnameVerifier(this);
-                    }
-                    try {
-                        try (InputStream in = cn.getInputStream()) {
-                            // could provide better progress reporter with cn.getContentLengthLong();
-                            md.reset();
-                            copy(in, out, md);
-                            final byte[] actualSha256 = md.digest();
-                            if (!Arrays.equals(sha256, actualSha256)) {
-                                final String expected = hexString(sha256);
-                                final String actual = hexString(actualSha256);
-                                throw new RuntimeException(source + ": sha mismatch: " + actual + " != " + expected);
-                            }
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+        }
+        return false;
+    }
+
+    private long fetch(String sourcePath, Path target, byte[] sha256, long size, boolean dry) throws IOException {
+        if (localMirror != null && copyFromLocalMirror(sourcePath, target, sha256)) {
+            return 0;
+        }
+        if (dry) {
+            return size;
+        }
+        final URL source = new URL(centralRepo + "/" + sourcePath);
+        final Path tmp = createTempFile(target);
+        try {
+            try (OutputStream out = Files.newOutputStream(tmp)) {
+                if (trace) {
+                    System.err.println("++ fetch -o " + target + " " + source);
+                }
+                final URLConnection cn = source.openConnection();
+                if (cn instanceof HttpsURLConnection) {
+                    ((HttpsURLConnection) cn).setSSLSocketFactory(getSocketFactory());
+                    ((HttpsURLConnection) cn).setHostnameVerifier(this);
+                }
+                try (InputStream in = cn.getInputStream()) {
+                    md.reset();
+                    copy(in, out, md);
+                    final byte[] actualSha256 = md.digest();
+                    if (!Arrays.equals(sha256, actualSha256)) {
+                        final String expected = hexString(sha256);
+                        final String actual = hexString(actualSha256);
+                        throw new RuntimeException(source + ": sha mismatch: " + actual + " != " + expected);
                     }
                 }
             }
             Files.move(tmp, target,
                     StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING);
+            return Files.size(target);
         } finally {
             Files.deleteIfExists(tmp);
         }
@@ -253,39 +327,6 @@ public class Runner implements X509TrustManager, HostnameVerifier {
             }
         }
         return false;
-    }
-
-    private static byte[] parseHex(String input) {
-        final int len = input.length();
-        if ((len & 0x01) != 0) throw new IllegalArgumentException("odd input length");
-        final byte[] result = new byte[len >> 1];
-        int j = 0;
-        for (int k = 0; k < len; k ++) {
-            final int hi = Character.digit(input.charAt(k++), 16);
-            final int lo = Character.digit(input.charAt(k), 16);
-            result[j++] = (byte) (((hi << 4) | lo) & 0xFF);
-        }
-        return result;
-    }
-
-    private static byte[] parseHexFromEnv(String variable) {
-        final String sha256Env = System.getenv(variable);
-        final byte[] sha256;
-        if (sha256Env != null && isNotBlank(sha256Env)) {
-            final byte[] result;
-            try {
-                result = parseHex(sha256Env);
-            } catch (IllegalArgumentException e) {
-                throw new IllegalStateException(variable + " environment variable has invalid format: " + e.getMessage());
-            }
-            if (result.length != 32) {
-                throw new IllegalStateException(variable + " environment variable has invalid length: expected 64 hex digits");
-            }
-            sha256 = result;
-        } else {
-            throw new IllegalStateException(variable + " environment variable not set");
-        }
-        return sha256;
     }
 
     private static String hexString(byte[] input) {
@@ -353,7 +394,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         if (mainClass == null) {
             final StringBuilder sb = new StringBuilder();
             final String fn = scriptFile.getFileName().toString();
-            if (fn.length() > 0) {
+            if (!fn.isEmpty()) {
                 sb.append(fn.substring(0, 1).toUpperCase());
             }
             int fromIndex = 1;
@@ -448,7 +489,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
             }
         }
         classPath[0] = jarToExecute.toUri().toURL();
-        final URLClassLoader cl = new URLClassLoader(classPath, Runner.class.getClassLoader());
+        final URLClassLoader cl = new URLClassLoader(classPath, Launcher.class.getClassLoader());
         Thread.currentThread().setContextClassLoader(cl);
         final Class<?> clazz = cl.loadClass(mainClass);
         if (executeKts) {
@@ -462,27 +503,44 @@ public class Runner implements X509TrustManager, HostnameVerifier {
 
     private Path executeCompiler() throws IOException, ClassNotFoundException,
             NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        final String kotlinScriptRelPath =
-                "org/cikit/kotlin_script/" + kotlinScriptVersion + "/kotlin_script-" + kotlinScriptVersion + ".jar";
-        final Path kotlinScriptPath = localRepo.resolve(kotlinScriptRelPath);
-        if (!Files.isReadable(kotlinScriptPath)) {
-            final byte[] sha256 = parseHexFromEnv("KOTLIN_SCRIPT_SHA256");
-            fetch(kotlinScriptRelPath, kotlinScriptPath, sha256);
+        final URL[] classPath = new URL[dependencies.length];
+        progressTotal = 0L;
+        if (progress && !trace) {
+            for (int i = 0; i < dependencies.length; i++) {
+                final String relPath = dependencies[i];
+                final byte[] sha256 = checksums[i];
+                final long size = sizes[i];
+                final Path targetPath = localRepo.resolve(relPath);
+                if (!Files.isReadable(targetPath)) {
+                    progressTotal += fetch(relPath, targetPath, sha256, size, true);
+                }
+            }
         }
-
-        final String kotlinVersion;
-        final String kotlinVersionEnv = System.getenv("KOTLIN_VERSION");
-        if (kotlinVersionEnv != null && isNotBlank(kotlinVersionEnv)) {
-            kotlinVersion = kotlinVersionEnv;
-        } else {
-            throw new IllegalStateException("KOTLIN_VERSION environment variable not set");
+        if (progressTotal > 0L) {
+            progressMsg = "fetching kotlin_script compiler";
+            progressThread = new Thread(this);
+            progressThread.setDaemon(true);
+            progressThread.start();
         }
-        final String kotlinStdLibRelPath =
-                "org/jetbrains/kotlin/kotlin-stdlib/" + kotlinVersion + "/kotlin-stdlib-" + kotlinVersion + ".jar";
-        final Path kotlinStdLibPath = localRepo.resolve(kotlinStdLibRelPath);
-        if (!Files.isReadable(kotlinStdLibPath)) {
-            final byte[] sha256 = parseHexFromEnv("KOTLIN_STDLIB_SHA256");
-            fetch(kotlinStdLibRelPath, kotlinStdLibPath, sha256);
+        try {
+            for (int i = 0; i < dependencies.length; i++) {
+                final String relPath = dependencies[i];
+                final byte[] sha256 = checksums[i];
+                final long size = sizes[i];
+                final Path targetPath = localRepo.resolve(relPath);
+                if (!Files.isReadable(targetPath)) {
+                    fetch(relPath, targetPath, sha256, size, false);
+                }
+                classPath[i] = targetPath.toUri().toURL();
+            }
+        } finally {
+            if (progressTotal > 0L) {
+                synchronized (progressLock) {
+                    progressMsg = null;
+                    progressLock.notify();
+                }
+                progressTotal = 0L;
+            }
         }
 
         if (trace) {
@@ -492,11 +550,8 @@ public class Runner implements X509TrustManager, HostnameVerifier {
                     scriptFileSha256 + " " +
                     scriptMetadata);
         }
-        final URL[] classPath = new URL[]{
-                kotlinScriptPath.toUri().toURL(),
-                kotlinStdLibPath.toUri().toURL()
-        };
-        final URLClassLoader cl = new URLClassLoader(classPath, Runner.class.getClassLoader());
+
+        final URLClassLoader cl = new URLClassLoader(classPath, Launcher.class.getClassLoader());
         Thread.currentThread().setContextClassLoader(cl);
         final Class<?> clazz = cl.loadClass("kotlin_script.KotlinScript");
         final Method compileScriptMethod = clazz.getMethod(
@@ -511,7 +566,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
 
     public static void main(String[] args) throws IOException, NoSuchAlgorithmException, KeyManagementException, InvocationTargetException {
         if (args.length == 0) {
-            System.err.println("usage: Runner /path/to/script [ARG...]");
+            System.err.println("usage: Launcher /path/to/script [ARG...]");
             System.exit(2);
         }
 
@@ -524,13 +579,35 @@ public class Runner implements X509TrustManager, HostnameVerifier {
             System.setProperty("kotlin_script.flags", scriptFlags);
         }
 
-        final Runner runner = new Runner(Paths.get(scriptName));
+        final Launcher launcher = new Launcher(Paths.get(scriptName));
+        final Path expectedLauncherPath = launcher.localRepo.resolve(
+                "org/cikit/kotlin_script/" + launcher.kotlinScriptVersion +
+                        "/kotlin_script-" + launcher.kotlinScriptVersion + ".sh");
+        final URL launcherJarUrl = Launcher.class.getResource("/kotlin_script/Launcher.class");
+        if (launcherJarUrl != null && launcherJarUrl.toString().startsWith("jar:file:")) {
+            final String launcherJarPath1 = launcherJarUrl.toString().substring(9);
+            final int i = launcherJarPath1.lastIndexOf('!');
+            final String launcherJarPath;
+            if (i < 0) {
+                launcherJarPath = launcherJarPath1;
+            } else {
+                launcherJarPath = launcherJarPath1.substring(0, i);
+            }
+            Path actualLauncherPath = Paths.get(launcherJarPath);
+            if (!Files.exists(expectedLauncherPath) || !Files.isSameFile(expectedLauncherPath, actualLauncherPath)) {
+                final Path targetDir = expectedLauncherPath.getParent();
+                if (targetDir != null && !Files.isDirectory(targetDir)) {
+                    Files.createDirectories(targetDir);
+                }
+                Files.copy(actualLauncherPath, expectedLauncherPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
         final String[] scriptArgs = new String[args.length - 1];
         System.arraycopy(args, 1, scriptArgs, 0, args.length - 1);
 
-        if (!runner.force) {
+        if (!launcher.force) {
             try {
-                runner.executeCachedJar(null, scriptArgs);
+                launcher.executeCachedJar(null, scriptArgs);
                 return;
             } catch (InvocationTargetException e) {
                 final Throwable cause = e.getCause();
@@ -549,7 +626,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         final Path targetJar;
 
         try {
-            targetJar = runner.executeCompiler();
+            targetJar = launcher.executeCompiler();
         } catch (InvocationTargetException e) {
             final Throwable cause = e.getCause();
             if (cause == null) {
@@ -566,7 +643,7 @@ public class Runner implements X509TrustManager, HostnameVerifier {
         }
 
         try {
-            runner.executeCachedJar(targetJar, scriptArgs);
+            launcher.executeCachedJar(targetJar, scriptArgs);
         } catch (InvocationTargetException e) {
             final Throwable cause = e.getCause();
             if (cause == null) {

@@ -2,19 +2,25 @@ import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    val kotlinVersion = "1.8.10"
+    val kotlinVersion = "1.9.21"
 
     kotlin("jvm") version kotlinVersion
-    id("org.jetbrains.dokka") version kotlinVersion
+    kotlin("plugin.serialization") version kotlinVersion
+    id("org.jetbrains.dokka") version "1.9.10"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.8.10.18"
+version = "1.9.21.19"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    }
+}
+
+kotlin {
+    jvmToolchain(8)
 }
 
 repositories {
@@ -22,14 +28,9 @@ repositories {
 }
 
 sourceSets {
-    create("mainKtsCompat") {
+    create("launcher") {
         java {
-            srcDir("main-kts-compat")
-        }
-    }
-    create("runner") {
-        java {
-            srcDir("runner")
+            srcDir("launcher")
         }
     }
     create("examples") {
@@ -50,38 +51,27 @@ fun DependencyHandler.examplesImplementation(dependencyNotation: Any): Dependenc
 
 dependencies {
     implementation(kotlin("stdlib"))
+    implementation("com.github.ajalt.mordant:mordant-jvm:2.2.0")
 
-    testImplementation("org.apache.bcel:bcel:6.6.0")
-    testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.25")
+    testImplementation("org.apache.bcel:bcel:6.7.0")
+    testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.28.0")
 
     examplesImplementation("org.cikit:kotlin_script:$version")
-    examplesImplementation("org.apache.commons:commons-compress:1.21")
+    examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    examplesImplementation("org.apache.commons:commons-compress:1.25.0")
     examplesImplementation("org.eclipse.jdt:ecj:3.33.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
     examplesImplementation("org.apache.sshd:sshd-netty:2.9.0")
     examplesImplementation("org.apache.sshd:sshd-git:2.9.0")
     examplesImplementation("net.i2p.crypto:eddsa:0.3.0")
     examplesImplementation("org.bouncycastle:bcpkix-jdk15on:1.70")
-    examplesImplementation("io.vertx:vertx-core:4.4.0")
-    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.14.2")
-    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:3.5.2")
-}
-
-val compileKotlin: KotlinCompile by tasks
-compileKotlin.kotlinOptions {
-    //jdkHome = properties["jdk.home"]?.toString()?.takeIf { it != "unspecified" }
-
-    jvmTarget = "1.8"
-}
-
-val compileTestKotlin: KotlinCompile by tasks
-compileTestKotlin.kotlinOptions {
-    jvmTarget = "1.8"
+    examplesImplementation("io.vertx:vertx-core:4.5.0")
+    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.15.3")
+    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:4.2.1")
 }
 
 val main by sourceSets
-val mainKtsCompat by sourceSets
-val runner by sourceSets
+val launcher by sourceSets
 
 val sourcesJar by tasks.creating(Jar::class) {
     group = "build"
@@ -96,26 +86,15 @@ val dokkaJar by tasks.creating(Jar::class) {
     from(tasks["dokkaJavadoc"])
 }
 
-val mainKtsCompatJar by tasks.creating(Jar::class) {
+val launcherJar by tasks.creating(Jar::class) {
     group = "build"
-    archiveClassifier.set("main-kts-compat")
-    from(mainKtsCompat.output)
+    archiveClassifier.set("launcher")
+    from(launcher.output)
     manifest {
-        attributes["Implementation-Title"] = "kotlin_script.main-kts-compat"
+        attributes["Implementation-Title"] = "kotlin_script.launcher"
         attributes["Implementation-Version"] = archiveVersion
         attributes["Implementation-Vendor"] = "cikit.org"
-    }
-}
-
-val runnerJar by tasks.creating(Jar::class) {
-    group = "build"
-    archiveClassifier.set("runner")
-    from(runner.output)
-    manifest {
-        attributes["Implementation-Title"] = "kotlin_script.runner"
-        attributes["Implementation-Version"] = archiveVersion
-        attributes["Implementation-Vendor"] = "cikit.org"
-        attributes["Main-Class"] = "kotlin_script.Runner"
+        attributes["Main-Class"] = "kotlin_script.Launcher"
     }
 }
 
@@ -126,12 +105,27 @@ tasks.named<Jar>("jar") {
         rename(".*", "pom.xml")
     }
     val compilerClassPath = configurations.kotlinCompilerClasspath.get().resolvedConfiguration.resolvedArtifacts
+        .filterNot { it.moduleVersion.id.name == "kotlin-stdlib-common" }
+    val classPath = configurations.runtimeClasspath.get().resolvedConfiguration.resolvedArtifacts
+        .filterNot { it.moduleVersion.id.name.startsWith("kotlin-stdlib-") ||
+                it.moduleVersion.id.name == "annotations"
+        }
+        .plus(compilerClassPath.filter { it.moduleVersion.id.name.startsWith("kotlin-stdlib") })
+        .toSet()
     manifest {
         attributes["Implementation-Title"] = "kotlin_script"
         attributes["Implementation-Version"] = archiveVersion
         attributes["Implementation-Vendor"] = "cikit.org"
-        attributes["Main-Class"] = "kotlin_script.KotlinScript"
-        attributes["Class-Path"] = "../../../jetbrains/kotlin/kotlin-stdlib/${getKotlinPluginVersion()}/kotlin-stdlib-${getKotlinPluginVersion()}.jar"
+        attributes["Kotlin-Script-Class-Path"] = classPath.joinToString(" ") { a ->
+            "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +
+                    "${a.moduleVersion.id.version}:" + when (a.classifier) {
+                null -> ""
+                else -> a.classifier
+            } + when (a.type) {
+                "jar" -> ""
+                else -> "@${a.type}"
+            }
+        }
         attributes["Kotlin-Script-Version"] = archiveVersion
         attributes["Kotlin-Compiler-Version"] = getKotlinPluginVersion()
         attributes["Kotlin-Compiler-Class-Path"] = compilerClassPath.joinToString(" ") { a ->

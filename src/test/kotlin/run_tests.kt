@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.6.0.0
+v=1.9.21.19
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -25,7 +25,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "c7710288e71855c0ae05004fae38be70f7368f0432f6d660530205026e9bbfbd "*) ;;
+  "425beb05a5896b09ee916c5754e8262a837e15b4c40d6e9802f959b37210928e "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
@@ -33,14 +33,12 @@ fi
 . "$kotlin_script_sh"; exit 2
 */
 
-///DEP=org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.6.0
-///DEP=org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.6.0
+///DEP=org.apache.bcel:bcel:6.7.0
+///DEP=org.apache.commons:commons-lang3:3.12.0
 
-///DEP=org.apache.bcel:bcel:6.5.0
-
-///DEP=com.willowtreeapps.assertk:assertk-jvm:0.25
-///DEP=com.willowtreeapps.opentest4k:opentest4k-jvm:1.2.2
-///DEP=org.opentest4j:opentest4j:1.2.0
+///DEP=com.willowtreeapps.assertk:assertk-jvm:0.28.0
+///DEP=com.willowtreeapps.opentest4k:opentest4k-jvm:1.3.0
+///DEP=org.opentest4j:opentest4j:1.3.0
 
 ///INC=TestBasic.kt
 ///INC=TestCachePath.kt
@@ -238,6 +236,20 @@ fun setupRepo() {
         ?.getValue("Kotlin-Compiler-Class-Path")
         ?: error("cannot get compiler class-path from manifest in kotlin_script-$v.jar")
     compilerClassPath.split(' ').forEach { d ->
+        val (groupId, artifactId, version) = d.split(':')
+        val subPath = groupId.replace('.', '/') + "/$artifactId/$version/$artifactId-$version.jar"
+        val target = repo.resolve(subPath)
+        Files.createDirectories(target.parent)
+        Files.copy(
+            realLocalRepo.resolve(subPath),
+            target, StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    val classPath = manifest
+        ?.mainAttributes
+        ?.getValue("Kotlin-Script-Class-Path")
+        ?: error("cannot get class path from manifest in kotlin_script-$v.jar")
+    classPath.split(' ').forEach { d ->
         val (groupId, artifactId, version) = d.split(':')
         val subPath = groupId.replace('.', '/') + "/$artifactId/$version/$artifactId-$version.jar"
         val target = repo.resolve(subPath)

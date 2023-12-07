@@ -1,3 +1,4 @@
+import assertk.assertFailure
 import assertk.assertThat
 import assertk.assertions.hasClass
 import assertk.assertions.isFailure
@@ -11,17 +12,17 @@ class TestBasic {
     }
 
     @Test
-    fun `fail on compiler error`() = assertThat {
+    fun `fail on compiler error`() = assertFailure {
         baseDir.resolve("test_err.kt").writeText("hello there\n")
         runScript(
             "test_compile_error.out",
             "env", *env, "script_file=test_err.kt",
             zsh, "-xy", "test.kt"
         )
-    }.isFailure().hasClass(IllegalStateException::class)
+    }.hasClass(IllegalStateException::class)
 
     @Test
-    fun `fail on invalid include`() = assertThat {
+    fun `fail on invalid include`() = assertFailure {
         baseDir.resolve("test_inv_inc.kt").writeText(
             "///INC=nowhere.kt\n"
         )
@@ -30,10 +31,10 @@ class TestBasic {
             "env", *env, "script_file=test_inv_inc.kt",
             zsh, "-xy", "test.kt"
         )
-    }.isFailure().hasClass(IllegalStateException::class)
+    }.hasClass(IllegalStateException::class)
 
     @Test
-    fun `fail on invalid dependency`() = assertThat {
+    fun `fail on invalid dependency`() = assertFailure {
         baseDir.resolve("test_inv_dep.kt").writeText(
             "///DEP=nowhere:nothing:1.0\n"
         )
@@ -42,7 +43,7 @@ class TestBasic {
             "env", *env, "script_file=test_inv_dep.kt",
             zsh, "-xy", "test.kt"
         )
-    }.isFailure().hasClass(IllegalStateException::class)
+    }.hasClass(IllegalStateException::class)
 
     @Test
     fun `run with clean cache`() {
@@ -56,7 +57,7 @@ class TestBasic {
     }
 
     @Test
-    fun `fail on bad local repo`() = assertThat {
+    fun `fail on bad local repo`() = assertFailure {
         compileOk()
         cleanup(cache)
         val f = localRepo.resolve(
@@ -69,5 +70,5 @@ class TestBasic {
             "env", *env, "script_file=test.kt",
             zsh, "-xy", "test.kt"
         )
-    }.isFailure().hasClass(IllegalStateException::class)
+    }.hasClass(IllegalStateException::class)
 }

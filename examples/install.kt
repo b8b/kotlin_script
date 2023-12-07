@@ -1,6 +1,6 @@
 #!/bin/sh
 
-/*__kotlin_script_installer__/ 2>&-
+/*/ __kotlin_script_installer__ 2>&-
 # vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
@@ -10,31 +10,31 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.72.0
-artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
-repo=${repo:-https://repo1.maven.org/maven2}
-if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
-  fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
-  mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/"$v"
-  tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" "$repo"/"$artifact"; then
-    echo "error: failed to fetch kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1
+v=1.8.10.18
+p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
+url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
+kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+if ! [ -r "$kotlin_script_sh" ]; then
+  kotlin_script_sh="$(mktemp)" || exit 1
+  fetch_cmd="$(command -v curl) -kfLSso" || \
+    fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
+    fetch_cmd="wget --no-check-certificate -qO"
+  if ! $fetch_cmd "$kotlin_script_sh" "$url"; then
+    echo "failed to fetch kotlin_script.sh from $url" >&2
+    rm -f "$kotlin_script_sh"; exit 1
   fi
-  case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "175648b97df5b0410c177a379f58aca8f029b3da705ecfda87b542133ba0ac2d "*)
-    mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
-  *)
-    echo "error: failed to validate kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1 ;;
+  dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
+  case "$($dgst_cmd < "$kotlin_script_sh")" in
+  "11ffc2591a99e21602953ba2ebda001237d5953fba547227748c4fdf4a5d4faf "*) ;;
+  *) echo "error: failed to verify kotlin_script.sh" >&2
+     rm -f "$kotlin_script_sh"; exit 1;;
   esac
 fi
-. "$local_repo"/"$artifact"
-exit 2
+. "$kotlin_script_sh"; exit 2
 */
 
-///DEP=org.eclipse.jdt:ecj:3.16.0
-///DEP=org.apache.commons:commons-compress:1.21
+///DEP=org.eclipse.jdt:ecj:3.33.0
+///DEP=org.apache.commons:commons-compress:1.25.0
 
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
@@ -49,6 +49,10 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.jar.Manifest
 import java.util.zip.ZipFile
+import kotlin.io.path.fileSize
+import kotlin.io.path.readBytes
+import kotlin.io.path.useLines
+import kotlin.io.path.writer
 
 private fun Path.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
@@ -179,11 +183,54 @@ private fun canonicalizeJar(
     }
 }
 
-private fun compileRunner(
+private fun compileLauncher(
     sources: Path, output: OutputStream, ts: Instant,
-    manifest: String
+    manifest: String,
+    repo: Path, kotlinScriptDependencies: List<String>
 ) {
-    val tmpDir = Files.createTempDirectory("runner")
+    val javaSource = sources.resolve("kotlin_script/Launcher.java")
+    val updatedSource = mutableListOf<String>()
+    javaSource.useLines { lines ->
+        var st = 0
+        for (line in lines) {
+            when (st) {
+                0 -> {
+                    updatedSource += line
+                    if (line.trim() == "private final String[] dependencies = new String[] {") {
+                        for (subPath in kotlinScriptDependencies) {
+                            updatedSource += "            \"$subPath\","
+                        }
+                        st = 1
+                    }
+                    if (line.trim() == "private final byte[][] checksums = new byte[][] {") {
+                        for (subPath in kotlinScriptDependencies) {
+                            val md = MessageDigest.getInstance("SHA-256")
+                            md.update(repo.resolve(subPath).readBytes())
+                            updatedSource += md.digest().joinToString(", ", "            new byte[]{", "},")
+                        }
+                        st = 1
+                    }
+                    if (line.trim() == "private final long[] sizes = new long[] {") {
+                        for (subPath in kotlinScriptDependencies) {
+                            updatedSource += "            ${repo.resolve(subPath).fileSize()}L,"
+                        }
+                        st = 1
+                    }
+                }
+                1 -> if (line.trim() == "};") {
+                    updatedSource += line
+                    st = 0
+                }
+                else -> error("invalid st: $st")
+            }
+        }
+    }
+    javaSource.writer().use { w ->
+        for (line in updatedSource) {
+            w.appendLine(line)
+        }
+    }
+    val tmpDir = Files.createTempDirectory("launcher")
     try {
         BatchCompiler.compile(
             arrayOf(
@@ -286,9 +333,13 @@ fun main(args: Array<String>) {
         z.getInputStream(z.getEntry("META-INF/maven/org.cikit/kotlin_script/pom.xml")).use { `in` -> String(`in`.readBytes()) }
     }
 
-    val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
     val kotlinScriptVersion = manifest.mainAttributes.getValue("Implementation-Version")
-    val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
+    val kotlinScriptDependencies = listOf(
+        "org/cikit/kotlin_script/$kotlinScriptVersion/kotlin_script-$kotlinScriptVersion.jar"
+    ) + manifest.mainAttributes.getValue("Kotlin-Script-Class-Path").split(' ').map { d ->
+        val (groupId, artifactId, version) = d.split(':')
+        groupId.replace('.', '/') + "/$artifactId/$version/$artifactId-$version.jar"
+    }
 
     val repoKotlinScript = repo.resolve("org/cikit/kotlin_script/$kotlinScriptVersion")
     Files.createDirectories(repoKotlinScript)
@@ -301,7 +352,6 @@ fun main(args: Array<String>) {
     for (item in listOf(
         "kotlin_script-$kotlinScriptVersion-javadoc.jar",
         "kotlin_script-$kotlinScriptVersion-sources.jar",
-        "kotlin_script-$kotlinScriptVersion-main-kts-compat.jar"
     )) {
         canonicalizeJar(mainJar.parent.resolve(item), repoKotlinScript.resolve(item), ts)
     }
@@ -312,10 +362,7 @@ fun main(args: Array<String>) {
             val w = out.bufferedWriter()
             r.useLines { lines ->
                 for (line in lines) {
-                    w.write(line.replace("@kotlin_stdlib_ver@", kotlinVersion)
-                            .replace("@kotlin_stdlib_dgst@", compilerLibDir.resolve("kotlin-stdlib.jar").sha256())
-                            .replace("@kotlin_script_jar_ver@", kotlinScriptVersion)
-                            .replace("@kotlin_script_jar_dgst@", mainJarTgt.sha256()))
+                    w.write(line)
                     w.write("${'\n'}")
                 }
             }
@@ -324,8 +371,8 @@ fun main(args: Array<String>) {
                     "Implementation-Title: kotlin_script\n" +
                     "Implementation-Version: $kotlinScriptVersion\n" +
                     "Implementation-Vendor: cikit.org\n" +
-                    "Main-Class: kotlin_script.Runner\n"
-            compileRunner(Paths.get("runner"), out, ts, mfStr)
+                    "Main-Class: kotlin_script.Launcher\n"
+            compileLauncher(Paths.get("launcher"), out, ts, mfStr, repo, kotlinScriptDependencies)
         }
     }
 

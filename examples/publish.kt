@@ -133,8 +133,7 @@ fun main(args: Array<String>) {
         Item("$libDir/kotlin_script-$v.sh"),
         Item("$libDir/kotlin_script-$v.jar"),
         Item("$libDir/kotlin_script-$v-sources.jar"),
-        Item("$libDir/kotlin_script-$v-javadoc.jar"),
-        Item("$libDir/kotlin_script-$v-main-kts-compat.jar")
+        Item("$libDir/kotlin_script-$v-javadoc.jar")
     )
 
     for (item in filesToPublish) {

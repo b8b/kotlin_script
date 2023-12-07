@@ -10,15 +10,11 @@ You can easily install any version of `kotlin_script` (linked with any
  kotlin version) with the following gradle task.
  
 ```
-v=1.8.10.18
-./gradlew jar mainKtsCompatJar runnerJar sourcesJar dokkaJar copyDependencies
+v=1.9.21.19
+./gradlew jar launcherJar sourcesJar dokkaJar copyDependencies
 
 # run install script with embedded kotlin_script installer
 ./examples/install.kt build/libs/kotlin_script-${v}.jar
-
-# alternatively, compile and run install script manually
-./gradlew examplesClasses
-java -cp build/libs/kotlin_script-${v}.jar:build/classes/kotlin/examples InstallKt build/libs/kotlin_script-${v}.jar
 
 # run tests
 ./src/test/kotlin/run_tests.kt
@@ -43,7 +39,7 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.8.10.18
+v=1.9.21.19
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -58,7 +54,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "11ffc2591a99e21602953ba2ebda001237d5953fba547227748c4fdf4a5d4faf "*) ;;
+  "425beb05a5896b09ee916c5754e8262a837e15b4c40d6e9802f959b37210928e "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
@@ -68,11 +64,11 @@ fi
 ```
 
 Also, the script file has to be a regular kotlin source file with
-additional meta data and a main function/method.
+additional metadata and a main function/method.
 
 There is an initial kts support, however script templates (like main-kts) are 
 not directly supported. When using main-kts, the flat (locked) list of 
-dependencies have to be respecified within `///DEP` comments (see below).
+dependencies has to be specified within `///DEP` comments (see below).
 
 You can try an example:
 
@@ -88,13 +84,11 @@ version to determine if recompilation is required.
 
 ## Variables
 
-Some shell variables can be customized in the embedded installer.
+The following shell variables are used in kotlin_script.sh.
 
-* `kotlin_script_sh` - path to kotlin_script-XX.sh
-* `fetch_cmd` - command to fetch files
-* `dgst_cmd` - command to calculate sha256 checksum of stdin
-* `java_cmd` - command to start java vm (default `java`)
+* `kotlin_script_sh` - path to fetched kotlin_script.sh
 * `script_file` - path to executed script (default `$0`)
+* `java_cmd` - command and args to invoke jvm (default `java`) 
 
 Environment variables
 

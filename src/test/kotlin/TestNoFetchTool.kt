@@ -1,11 +1,10 @@
-import assertk.assertThat
+import assertk.assertFailure
 import assertk.assertions.hasClass
-import assertk.assertions.isFailure
 import java.nio.file.Files
 
 class TestNoFetchTool {
     @Test
-    fun `without any fetch tool available throw an exception`() = assertThat {
+    fun `without any fetch tool available throw an exception`() = assertFailure {
         compileOk()
         cleanup(cache)
         val subDir = "org/cikit/kotlin_script/$v"
@@ -21,5 +20,5 @@ class TestNoFetchTool {
             "env", *env, "script_file=test.kt",
             zsh, "-xy", "test.kt"
         )
-    }.isFailure().hasClass(IllegalStateException::class)
+    }.hasClass(IllegalStateException::class)
 }
