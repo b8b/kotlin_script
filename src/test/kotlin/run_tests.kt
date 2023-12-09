@@ -49,14 +49,15 @@ import org.apache.bcel.classfile.ClassParser
 import java.io.IOException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
-import java.nio.file.*
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
-import java.util.jar.Manifest
 import java.util.zip.ZipFile
-import java.util.zip.ZipInputStream
 import kotlin.io.path.*
 import kotlin.streams.asSequence
 import kotlin.system.exitProcess
@@ -81,7 +82,7 @@ fun cleanup(dir: Path) {
     })
 }
 
-val readme = Paths.get("README.md").readText()
+val readme = Path("README.md").readText()
 
 val embeddedInstaller = ".*```Sh(.*?__kotlin_script_installer__.*?)```.*"
     .toRegex(RegexOption.DOT_MATCHES_ALL)
@@ -92,178 +93,137 @@ val v = Regex(".*\\nv=(.*?)\\n.*", RegexOption.DOT_MATCHES_ALL)
     .matchEntire(embeddedInstaller)?.groupValues?.get(1)?.trim()
     ?: error("error extracting kotlin_script version from embedded installer in README.md")
 
-val homeDir = Paths.get(System.getProperty("user.home"))
-val realLocalRepo = homeDir.resolve(".m2/repository")
-val libsDir = realLocalRepo.resolve("org/cikit/kotlin_script/$v")
+val homeDir = Path(System.getProperty("user.home"))
+val realLocalRepo = homeDir / ".m2/repository"
+val libsDir = realLocalRepo / "org/cikit/kotlin_script/$v"
 
 //+test.kt:3>
 val locPattern = "^\\+(.*?):(\\d+)> .*\$".toRegex()
 
 val kotlinScript = "kotlin_script-$v.sh".let { fileName ->
-    val md = MessageDigest.getInstance("SHA-256")
-    val lines = Files.newInputStream(libsDir.resolve(fileName)).use { `in` ->
-        val data = `in`.readBytes()
-        md.update(data)
-        String(data).split('\n')
-    }
-    val sha256 = md.digest().joinToString("") {
-        String.format("%02x", it)
+    val (lines, sha256) = (libsDir / fileName).readBytes().let { data ->
+        val sha256 = with(MessageDigest.getInstance("SHA-256")) {
+            update(data)
+            digest().joinToString("") { String.format("%02x", it) }
+        }
+        String(data).substringBefore("\nPK").trim().split("\n") to sha256
     }
     val shellFunctions = mutableMapOf<String, Int>()
+    val funcRegex = """^[A-Za-z0-9_]+\(\)$""".toRegex()
     lines.forEachIndexed { index, line ->
-        if (line.trimStart { ch ->
-                ch.isLetterOrDigit() || ch == '_'
-            } == "()") {
-            shellFunctions[line.removeSuffix("()")] =
-                index.inc()
+        if (line.matches(funcRegex)) {
+            shellFunctions[line.removeSuffix("()")] = index.inc()
         }
     }
     ShellScript(fileName, sha256, lines, shellFunctions)
 }
 
-val buildDir = Paths.get("build")
-val baseDir = buildDir.resolve("t_$v")
-val repo = baseDir.resolve( "repo")
-val binDir = baseDir.resolve("bin")
-val localRepo = baseDir.resolve("local_repo")
-val cache = localRepo.resolve("org/cikit/kotlin_script_cache")
+val buildDir = Path("build")
+val baseDir = buildDir / "t_$v"
+val initialRepo = baseDir / "initial_repo"
+val repo = baseDir /  "repo"
+val binDir = baseDir / "bin"
+val localRepo = baseDir / "local_repo"
+val cache = localRepo / "org/cikit/kotlin_script_cache"
 val linesCovered = mutableSetOf<Pair<String, Int>>()
 
 val env = arrayOf(
-    "PATH=${binDir.toAbsolutePath()}",
+    "PATH=${binDir.absolutePathString()}",
     "M2_CENTRAL_REPO=${repo.toUri()}",
-    "M2_LOCAL_REPO=${baseDir.toAbsolutePath().relativize(
-        localRepo.toAbsolutePath())}"
+    "M2_LOCAL_REPO=${localRepo.relativeTo(baseDir)}"
 )
 
-val zsh = ProcessBuilder("sh", "-c", "command -v zsh").let { pb ->
+private fun <T> sh(cmd: String, onExit: (Int, String) -> T): T {
+    val pb = ProcessBuilder("sh", "-c", cmd)
     pb.inheritIO()
     pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
     val p = pb.start()
     val out = p.inputStream.use { `in` -> String(`in`.readBytes()).trim() }
     val rc = p.waitFor()
-    if (rc != 0) error("cannot find location of zsh command")
+    return onExit(rc, out)
+}
+
+val zsh = sh("command -v zsh") { rc, out ->
+    require(rc == 0) { "cannot find location of zsh command" }
     out
 }
-
-val fetch = ProcessBuilder("sh", "-c", "command -v fetch").let { pb ->
-    pb.inheritIO()
-    pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
-    val p = pb.start()
-    val out = p.inputStream.use { `in` -> String(`in`.readBytes()).trim() }
-    val rc = p.waitFor()
-    if (rc != 0) null else out
-}
-
-val curl = ProcessBuilder("sh", "-c", "command -v curl").let { pb ->
-    pb.inheritIO()
-    pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
-    val p = pb.start()
-    val out = p.inputStream.use { `in` -> String(`in`.readBytes()).trim() }
-    val rc = p.waitFor()
-    if (rc != 0) null else out
-}
+val fetch = sh("command -v fetch") { rc, out -> if (rc == 0) out else null }
+val curl = sh("command -v curl") { rc, out -> if (rc == 0) out else null }
 
 fun setupBin() {
-    if (Files.exists(binDir)) cleanup(binDir)
-    Files.createDirectories(binDir)
+    if (binDir.exists()) cleanup(binDir)
+    binDir.createDirectories()
+    val p700 = PosixFilePermissions.asFileAttribute(
+        setOf(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.OWNER_EXECUTE
+        )
+    ).value()
     listOf(
         "rm", "mv", "cp", "mkdir", "mktemp",
         *(if (fetch == null) emptyArray() else arrayOf("fetch")),
         *(if (curl == null) emptyArray() else arrayOf("curl")),
-        "openssl", "java"
+        "openssl",
+        "java"
     ).forEach { tool ->
-        val outFile = binDir.resolve(tool)
-        Files.newOutputStream(outFile,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.TRUNCATE_EXISTING).use { out ->
-            out.write((
-                    "#!/bin/sh\n" +
-                            "read -r line << '__EOF__'\n" +
-                            "${System.getenv("PATH")}\n" +
-                            "__EOF__\n" +
-                            "export PATH=\"\$line\"\n" +
-                            "exec $tool \"\$@\"\n"
-                    ).toByteArray())
-        }
-        val permissions = PosixFilePermissions.asFileAttribute(setOf(
-            PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE,
-            PosixFilePermission.OWNER_EXECUTE
-        ))
+        val outFile = binDir / tool
+        outFile.writeText(
+            "#!/bin/sh\n" +
+                    "read -r line << '__EOF__'\n" +
+                    "${System.getenv("PATH")}\n" +
+                    "__EOF__\n" +
+                    "export PATH=\"\$line\"\n" +
+                    "exec $tool \"\$@\"\n"
+        )
         try {
-            Files.setPosixFilePermissions(
-                outFile,
-                permissions.value())
+            outFile.setPosixFilePermissions(p700)
         } catch (_: UnsupportedOperationException) {
         }
     }
 }
 
 fun setupLocalRepo() {
-    if (Files.exists(localRepo)) cleanup(localRepo)
+    if (localRepo.exists()) cleanup(localRepo)
+    localRepo.createDirectories()
+}
+
+fun setupInitialRepo() {
+    setupScripts()
+    if (initialRepo.exists()) cleanup(initialRepo)
+
+    //copy kotlin_script
+    val ksSubdir = (initialRepo / "org/cikit/kotlin_script/$v")
+        .createDirectories()
+    for (f in listOf("kotlin_script-$v.sh", "kotlin_script-$v.jar")) {
+        (libsDir / f).copyTo(ksSubdir / f, true)
+    }
+
+    runScript(
+        "setup_repo.out",
+        "env",
+        "M2_LOCAL_REPO=${initialRepo.relativeTo(baseDir)}",
+        "M2_LOCAL_MIRROR=${realLocalRepo.absolutePathString()}",
+        "script_file=test.kt",
+        zsh, "-xy", "test.kt"
+    )
 }
 
 fun setupRepo() {
-    if (Files.exists(repo)) cleanup(repo)
-
-    //copy kotlin_script
-    val ksSubdir = repo.resolve("org/cikit/kotlin_script/$v")
-    Files.createDirectories(ksSubdir)
-    Files.copy(
-        libsDir.resolve("kotlin_script-$v.sh"),
-        ksSubdir.resolve("kotlin_script-$v.sh"),
-        StandardCopyOption.REPLACE_EXISTING)
-    Files.copy(
-        libsDir.resolve("kotlin_script-$v.jar"),
-        ksSubdir.resolve("kotlin_script-$v.jar"),
-        StandardCopyOption.REPLACE_EXISTING)
-
-    //read compiler class-path
-    var manifest: Manifest? = null
-    ksSubdir.resolve("kotlin_script-$v.jar").inputStream().use { `in` ->
-        ZipInputStream(`in`).use { zin ->
-            while (true) {
-                val entry = zin.nextEntry ?: break
-                if (entry.name == "META-INF/MANIFEST.MF") {
-                    manifest = Manifest(zin)
-                }
-            }
+    if (repo.exists()) cleanup(repo)
+    for (f in Files.walk(initialRepo)) {
+        if (f.isDirectory()) {
+            (repo / f.relativeTo(initialRepo)).createDirectories()
+        } else {
+            f.copyTo(repo / f.relativeTo(initialRepo))
         }
-    }
-    val compilerClassPath = manifest
-        ?.mainAttributes
-        ?.getValue("Kotlin-Compiler-Class-Path")
-        ?: error("cannot get compiler class-path from manifest in kotlin_script-$v.jar")
-    compilerClassPath.split(' ').forEach { d ->
-        val (groupId, artifactId, version) = d.split(':')
-        val subPath = groupId.replace('.', '/') + "/$artifactId/$version/$artifactId-$version.jar"
-        val target = repo.resolve(subPath)
-        Files.createDirectories(target.parent)
-        Files.copy(
-            realLocalRepo.resolve(subPath),
-            target, StandardCopyOption.REPLACE_EXISTING)
-    }
-
-    val classPath = manifest
-        ?.mainAttributes
-        ?.getValue("Kotlin-Script-Class-Path")
-        ?: error("cannot get class path from manifest in kotlin_script-$v.jar")
-    classPath.split(' ').forEach { d ->
-        val (groupId, artifactId, version) = d.split(':')
-        val subPath = groupId.replace('.', '/') + "/$artifactId/$version/$artifactId-$version.jar"
-        val target = repo.resolve(subPath)
-        Files.createDirectories(target.parent)
-        Files.copy(
-            realLocalRepo.resolve(subPath),
-            target, StandardCopyOption.REPLACE_EXISTING)
     }
 }
 
 fun setupScripts() {
-    Files.createDirectories(baseDir)
-    baseDir.resolve("inc.kt").writeText("fun myFunc() = 1\n")
-    baseDir.resolve("test.kt").writer().use { w ->
+    baseDir.createDirectories()
+    (baseDir / "inc.kt").writeText("fun myFunc() = 1\n")
+    (baseDir / "test.kt").writer().use { w ->
         w.write(embeddedInstaller)
         w.write("""
                     |
@@ -281,15 +241,15 @@ fun runScript(logFileName: String, vararg args: String): List<String> {
     val p = ProcessBuilder(*args)
         .directory(baseDir.toFile())
         .redirectInput(ProcessBuilder.Redirect.PIPE)
-        .redirectOutput(ProcessBuilder.Redirect.to(
-            baseDir.resolve(logFileName).toFile()
-        ))
+        .redirectOutput(
+            ProcessBuilder.Redirect.to((baseDir / logFileName).toFile())
+        )
         .redirectErrorStream(true)
         .start()
     p.outputStream.close()
     val rc = p.waitFor()
     val result = mutableListOf<String>()
-    baseDir.resolve(logFileName).useLines { lines ->
+    (baseDir / logFileName).useLines { lines ->
         for (line in lines) {
             locPattern.matchEntire(line)?.let { mr ->
                 val (name, ln) = mr.destructured
@@ -304,8 +264,11 @@ fun runScript(logFileName: String, vararg args: String): List<String> {
             } ?: result.add(line)
         }
     }
-    if (rc != 0) error("command failed with exit code $rc:\n" +
-            result.joinToString("\n"))
+    if (rc != 0) {
+        error(
+            "command failed with exit code $rc:\n${result.joinToString("\n")}"
+        )
+    }
     return result.toList()
 }
 
@@ -318,11 +281,11 @@ fun setup() {
 
 fun reportCoverage() {
     for (fileName in linesCovered.map { it.first }.toSet()) {
-        val lines = if (fileName == "kotlin_script-$v.sh") {
+        val lines = if (Path(fileName).name == "kotlin_script-$v.sh") {
             kotlinScript.lines
         } else {
-            val f = baseDir.resolve(fileName)
-            if (Files.exists(f)) {
+            val f = baseDir / fileName
+            if (f.exists()) {
                 try {
                     f.readLines()
                 } catch (ex: IOException) {
@@ -334,7 +297,7 @@ fun reportCoverage() {
                 continue
             }
         }
-        baseDir.resolve("${fileName}.cov").writer().use { w ->
+        (baseDir / "${fileName}.cov").writer().use { w ->
             lines.forEachIndexed { index, line ->
                 val ln = fileName to index.inc()
                 if (linesCovered.contains(ln) ||
@@ -402,7 +365,7 @@ private fun ClassLoader.findClasses(
                 selectedEntries.asSequence()
             }
         } else if (uri.startsWith("file:")) {
-            val p = Paths.get(r.toURI())
+            val p = r.toURI().toPath()
             Files.walk(p).asSequence().mapNotNull { f ->
                 if (f.fileName.toString().endsWith(".class")) {
                     val cn = (p.nameCount until f.nameCount)
@@ -425,11 +388,12 @@ private fun ClassLoader.findClasses(
 }
 
 fun main(args: Array<String>) {
+    setupInitialRepo()
     val classLoader = Thread.currentThread().contextClassLoader
     val testClasses = classLoader.findClasses { className, fileName ->
         className.substringAfterLast(".").startsWith("Test") &&
                 (args.isEmpty() || className.substringAfterLast('.') in args ||
-                        args.any { arg -> Paths.get(arg).fileName.toString() == fileName })
+                        args.any { arg -> Path(arg).fileName.toString() == fileName })
     }
     for (className in testClasses.sorted()) {
         val clazz = Class.forName(className)

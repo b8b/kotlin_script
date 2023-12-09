@@ -13,15 +13,14 @@ enum class Scope {
 }
 
 data class Dependency(
-        val groupId: String,
-        val artifactId: String,
-        val version: String,
-        val classifier: String? = null,
-        val type: String = "jar",
-        val sha256: String? = null,
-        val scope: Scope = Scope.Compile
+    val groupId: String,
+    val artifactId: String,
+    val version: String,
+    val classifier: String? = null,
+    val type: String = "jar",
+    val sha256: String? = null,
+    val scope: Scope = Scope.Compile
 ) {
-
     fun toSpec(): String = "$groupId:$artifactId:$version" + when (classifier) {
         null -> ""
         else -> ":$classifier"
@@ -34,13 +33,23 @@ data class Dependency(
     }
 
     val subPath: String
-        get() = groupId.replace(".", "/") + "/" +
-                artifactId + "/" + version + "/" +
-                "${artifactId}-${version}" + when (classifier) {
-            null -> ""
-            else -> "-${classifier}"
-        } + ".${type}"
-
+        get() = buildString {
+            append(groupId.replace(".", "/"))
+            append("/")
+            append(artifactId)
+            append("/")
+            append(version)
+            append("/")
+            append(artifactId)
+            append("-")
+            append(version)
+            classifier?.let { str ->
+                append("-")
+                append(str)
+            }
+            append(".")
+            append(type)
+        }
 }
 
 fun parseDependency(spec: String): Dependency {
@@ -48,8 +57,9 @@ fun parseDependency(spec: String): Dependency {
     if (parts.size == 2) {
         return Dependency(parts[0], parts[1], "")
     }
-    if (parts.size < 3)
+    if (parts.size < 3) {
         throw IllegalArgumentException("invalid dependency spec: $spec")
+    }
     val groupId = parts[0]
     val artifactId = parts[1]
     var type = "jar"
@@ -79,9 +89,9 @@ fun parseDependency(spec: String): Dependency {
 }
 
 class Script(
-        val path: Path,
-        val checksum: String,
-        val data: ByteArray
+    val path: Path,
+    val checksum: String,
+    val data: ByteArray
 )
 
 fun loadScript(file: Path, dir: Path? = null): Script {

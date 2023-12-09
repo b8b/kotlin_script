@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     val kotlinVersion = "1.9.21"
@@ -11,7 +10,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "1.9.21.19"
+version = "1.9.21.20"
 
 java {
     toolchain {
@@ -49,6 +48,10 @@ configurations {
 fun DependencyHandler.examplesImplementation(dependencyNotation: Any): Dependency? =
         add("examplesImplementation", dependencyNotation)
 
+val main by sourceSets
+val launcher by sourceSets
+val examples by sourceSets
+
 dependencies {
     implementation(kotlin("stdlib"))
     implementation("com.github.ajalt.mordant:mordant-jvm:2.2.0")
@@ -56,7 +59,7 @@ dependencies {
     testImplementation("org.apache.bcel:bcel:6.7.0")
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.28.0")
 
-    examplesImplementation("org.cikit:kotlin_script:$version")
+    examplesImplementation(main.runtimeClasspath)
     examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
     examplesImplementation("org.apache.commons:commons-compress:1.25.0")
     examplesImplementation("org.eclipse.jdt:ecj:3.33.0")
@@ -69,9 +72,6 @@ dependencies {
     examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.15.3")
     examplesImplementation("com.github.ajalt.clikt:clikt-jvm:4.2.1")
 }
-
-val main by sourceSets
-val launcher by sourceSets
 
 val sourcesJar by tasks.creating(Jar::class) {
     group = "build"
@@ -98,47 +98,96 @@ val launcherJar by tasks.creating(Jar::class) {
     }
 }
 
+val mainJar by tasks.named<Jar>("jar")
+
 tasks.named<Jar>("jar") {
     dependsOn("generatePomFileForMavenJavaPublication")
     into("META-INF/maven/${project.group}/${project.name}") {
         from(File(buildDir, "publications/mavenJava"))
         rename(".*", "pom.xml")
     }
-    val compilerClassPath = configurations.kotlinCompilerClasspath.get().resolvedConfiguration.resolvedArtifacts
-        .filterNot { it.moduleVersion.id.name == "kotlin-stdlib-common" }
-    val classPath = configurations.runtimeClasspath.get().resolvedConfiguration.resolvedArtifacts
-        .filterNot { it.moduleVersion.id.name.startsWith("kotlin-stdlib-") ||
-                it.moduleVersion.id.name == "annotations"
-        }
-        .plus(compilerClassPath.filter { it.moduleVersion.id.name.startsWith("kotlin-stdlib") })
-        .toSet()
     manifest {
         attributes["Implementation-Title"] = "kotlin_script"
         attributes["Implementation-Version"] = archiveVersion
         attributes["Implementation-Vendor"] = "cikit.org"
-        attributes["Kotlin-Script-Class-Path"] = classPath.joinToString(" ") { a ->
-            "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +
-                    "${a.moduleVersion.id.version}:" + when (a.classifier) {
-                null -> ""
-                else -> a.classifier
-            } + when (a.type) {
-                "jar" -> ""
-                else -> "@${a.type}"
-            }
-        }
-        attributes["Kotlin-Script-Version"] = archiveVersion
-        attributes["Kotlin-Compiler-Version"] = getKotlinPluginVersion()
-        attributes["Kotlin-Compiler-Class-Path"] = compilerClassPath.joinToString(" ") { a ->
-            "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +
-                    "${a.moduleVersion.id.version}:" + when (a.classifier) {
-                null -> ""
-                else -> a.classifier
-            } + when (a.type) {
-                "jar" -> ""
-                else -> "@${a.type}"
-            }
-        }
     }
+}
+
+tasks.create<JavaExec>("updateMainSources") {
+    group = "Execution"
+    description = "update sources with dependency information"
+    classpath = examples.runtimeClasspath
+    mainClass.set("InstallKt")
+    val compilerClassPath = configurations.kotlinCompilerClasspath.get()
+        .resolvedConfiguration
+        .resolvedArtifacts
+        .filterNot { it.moduleVersion.id.name == "kotlin-stdlib-common" }
+    args = listOf(
+        "update-main-sources",
+        "--kotlin-script-version",
+        version.toString(),
+        "--kotlin-compiler-dependencies",
+        compilerClassPath.joinToString(" ") { a ->
+            "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +
+                    "${a.moduleVersion.id.version}:" + when (a.classifier) {
+                null -> ""
+                else -> a.classifier
+            } + when (a.type) {
+                "jar" -> ""
+                else -> "@${a.type}"
+            }
+        },
+        "--kotlin-compiler-class-path",
+        compilerClassPath.joinToString(":") { it.file.absolutePath },
+        sourceSets.main.get().kotlin.files.first {
+            it.invariantSeparatorsPath.endsWith("/kotlin_script/KotlinScript.kt")
+        }.path
+    )
+}
+
+tasks.create<JavaExec>("updateLauncherSources") {
+    group = "Execution"
+    description = "update sources with dependency information"
+    classpath = examples.runtimeClasspath
+    mainClass.set("InstallKt")
+    val classPath = configurations.runtimeClasspath.get().resolvedConfiguration.resolvedArtifacts
+        .filterNot { it.moduleVersion.id.name.startsWith("kotlin-stdlib-") ||
+                it.moduleVersion.id.name == "annotations"
+        }
+        .toSet()
+    args = listOf(
+        "update-launcher-sources",
+        "--kotlin-script-version",
+        version.toString(),
+        "--kotlin-script-dependencies",
+        classPath.joinToString(" ") { a ->
+            "${a.moduleVersion.id.group}:${a.moduleVersion.id.name}:" +
+                    "${a.moduleVersion.id.version}:" + when (a.classifier) {
+                null -> ""
+                else -> a.classifier
+            } + when (a.type) {
+                "jar" -> ""
+                else -> "@${a.type}"
+            }
+        },
+        "--kotlin-script-class-path",
+        classPath.joinToString(":") { it.file.absolutePath },
+        launcher.java.files.first {
+            it.invariantSeparatorsPath.endsWith("/kotlin_script/Launcher.java")
+        }.path
+    )
+}
+
+tasks.create<JavaExec>("installMainJar") {
+    dependsOn(mainJar, dokkaJar, sourcesJar)
+    group = "Execution"
+    description = "install kotlin_script to local repository"
+    classpath = examples.runtimeClasspath
+    mainClass.set("InstallKt")
+    args = listOf(
+        "install-main-jar",
+        mainJar.outputs.files.singleFile.toString()
+    )
 }
 
 val copyDependencies by tasks.registering(Copy::class) {

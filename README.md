@@ -7,14 +7,14 @@ Published versions are installed automatically by the embedded installer
  (see below).
  
 You can easily install any version of `kotlin_script` (linked with any 
- kotlin version) with the following gradle task.
+ kotlin version) with the following gradle tasks.
  
 ```
-v=1.9.21.19
-./gradlew jar launcherJar sourcesJar dokkaJar copyDependencies
+# update sources with dependency information
+./gradlew updateMainSources updateLauncherSources
 
-# run install script with embedded kotlin_script installer
-./examples/install.kt build/libs/kotlin_script-${v}.jar
+# build and install kotlin_script into local repository
+./gradlew installMainJar
 
 # run tests
 ./src/test/kotlin/run_tests.kt
@@ -39,7 +39,7 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.9.21.19
+v=1.9.21.20
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -54,7 +54,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "425beb05a5896b09ee916c5754e8262a837e15b4c40d6e9802f959b37210928e "*) ;;
+  "dec2edd120117db77fbeccf0a0fb9029e5f58b2818449244325ae98cba565483 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac

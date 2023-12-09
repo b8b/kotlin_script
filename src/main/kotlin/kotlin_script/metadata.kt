@@ -2,11 +2,10 @@ package kotlin_script
 
 import java.io.ByteArrayInputStream
 import java.io.OutputStream
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import kotlin.io.path.*
 
 data class MetaData(
     val mainScript: Script,
@@ -20,32 +19,40 @@ data class MetaData(
         val checksum = if (inc.isEmpty()) {
             mainScript.checksum
         } else {
-            val input = mainScript.checksum + " " + mainScript.path.fileName + "\n" +
-                    inc.joinToString("") { script ->
-                        script.checksum + " " + script.path + "\n"
-                    }
-            "sha256=" + input.sha256
+            val input = buildString {
+                append(mainScript.checksum)
+                append(" ")
+                append(mainScript.path.name)
+                append("\n")
+                for (script in inc) {
+                    append(script.checksum)
+                    append(" ")
+                    append(script.path.pathString)
+                    append("\n")
+                }
+            }
+            "sha256=${input.sha256}"
         }
-        val jvmTargetInfo = "-java$jvmTarget"
-        return Paths.get(
-            "org/cikit/kotlin_script_cache/$kotlinScriptVersion",
-            "kotlin_script_cache-$kotlinScriptVersion$jvmTargetInfo-$checksum.jar"
+        return Path(
+            "org/cikit/kotlin_script_cache",
+            kotlinScriptVersion,
+            "kotlin_script_cache-$kotlinScriptVersion-java$jvmTarget-$checksum.jar"
         )
     }
 
     private val String.sha256
         get() = MessageDigest.getInstance("SHA-256").let { md ->
-            md.update(this.toByteArray())
+            md.update(this.encodeToByteArray())
             md.digest().joinToString("") { x -> String.format("%02x", x) }
         }
 
     private fun store(out: OutputStream) {
         val w = out.bufferedWriter(Charsets.UTF_8)
         w.write("///KOTLIN_SCRIPT_VERSION=$kotlinScriptVersion\n")
-        w.write("///SCRIPT=${mainScript.path.fileName}\n")
+        w.write("///SCRIPT=${mainScript.path.name}\n")
         w.write("///CHK=${mainScript.checksum}\n")
         inc.forEach { s ->
-            w.write("///INC=${s.path}\n")
+            w.write("///INC=${s.path.pathString}\n")
         }
         w.write("///MAIN=$main\n")
         dep.forEach { d ->
@@ -61,23 +68,20 @@ data class MetaData(
     }
 
     fun storeToRepo(repo: Path) = storeToFile(
-        repo.resolve(
-            "org/cikit/kotlin_script_cache/$kotlinScriptVersion" +
-                    "/kotlin_script_cache-$kotlinScriptVersion" +
-                    "-${mainScript.checksum}.metadata"
-        )
+        repo / "org/cikit/kotlin_script_cache" / kotlinScriptVersion /
+                "kotlin_script_cache-$kotlinScriptVersion-${mainScript.checksum}.metadata"
     )
 
     fun storeToFile(file: Path) {
-        val tmp = file.parent.resolve("${file.fileName}~")
-        Files.createDirectories(tmp.parent)
-        Files.newOutputStream(tmp).use { out ->
-            store(out)
-        }
-        Files.move(
-                tmp, file,
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
+        val tmpName = "${file.name}~"
+        val tmp = file.parent
+            ?.let { p -> p.createDirectories() / tmpName }
+            ?: Path(tmpName)
+        tmp.outputStream().use { out -> store(out) }
+        tmp.moveTo(
+            file,
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE
         )
     }
 }
@@ -98,7 +102,7 @@ internal fun parseMetaData(
     }
     val scriptFileParent = mainScript.path.toAbsolutePath().parent
     val scripts = metaDataMap["INC"]?.map { s ->
-        loadScript(Paths.get(s), scriptFileParent)
+        loadScript(Path(s), scriptFileParent)
     }
     val dep = listOf(
         "DEP" to Scope.Compile,
@@ -112,22 +116,15 @@ internal fun parseMetaData(
     return MetaData(
         kotlinScriptVersion = kotlinScriptVersion,
         main = metaDataMap["MAIN"]?.singleOrNull()
-            ?: mainScript.path.fileName.toString().let { name ->
-                when {
-                    name.endsWith(".kts") -> {
-                        val trimmed = name.trim().removeSuffix(".kts")
-                        trimmed.first().uppercaseChar() +
-                                trimmed.substring(1).replace('.', '_')
-                    }
-                    name.length > 3 && name.endsWith(".kt") -> {
-                        val trimmed = name.trim().removeSuffix(".kt")
-                        trimmed.first().uppercaseChar() +
-                                trimmed.substring(1) +
-                                "Kt"
-                    }
-                    else -> null
-                }
-            } ?: throw IllegalArgumentException("missing MAIN in meta data"),
+            ?: when (mainScript.path.extension) {
+                "kt" -> mainScript.path.nameWithoutExtension
+                    .replaceFirstChar { ch -> ch.uppercaseChar() }
+                    .replace('.', '_')
+                    .plus("Kt")
+                else -> throw IllegalArgumentException(
+                    "missing MAIN in meta data"
+                )
+            },
         mainScript = mainScript,
         inc = scripts ?: emptyList(),
         dep = dep,

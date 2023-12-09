@@ -33,15 +33,37 @@ fi
 . "$kotlin_script_sh"; exit 2
 */
 
+///DEP=org.cikit:kotlin_script:1.8.10.18
+
+///DEP=com.github.ajalt.mordant:mordant-jvm:2.2.0
+///DEP=com.github.ajalt.colormath:colormath-jvm:3.3.1
+///DEP=org.jetbrains:markdown-jvm:0.5.2
+///DEP=it.unimi.dsi:fastutil-core:8.5.12
+///DEP=net.java.dev.jna:jna:5.13.0
+
+///DEP=com.github.ajalt.clikt:clikt-jvm:4.2.1
+
 ///DEP=org.eclipse.jdt:ecj:3.33.0
 ///DEP=org.apache.commons:commons-compress:1.25.0
 
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.types.long
+import com.github.ajalt.clikt.parameters.types.path
+import kotlin_script.parseDependency
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
 import org.eclipse.jdt.core.compiler.CompilationProgress
 import org.eclipse.jdt.core.compiler.batch.BatchCompiler
 import java.io.*
-import java.nio.file.*
+import java.nio.file.FileVisitResult
+import java.nio.file.FileVisitor
+import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
@@ -49,14 +71,11 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.jar.Manifest
 import java.util.zip.ZipFile
-import kotlin.io.path.fileSize
-import kotlin.io.path.readBytes
-import kotlin.io.path.useLines
-import kotlin.io.path.writer
+import kotlin.io.path.*
 
 private fun Path.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
-    Files.newInputStream(this).use { `in` ->
+    this.inputStream().use { `in` ->
         val buffer = ByteArray(1024 * 4)
         while (true) {
             val r = `in`.read(buffer)
@@ -65,16 +84,6 @@ private fun Path.sha256(): String {
         }
     }
     return md.digest().joinToString("") { String.format("%02x", it) }
-}
-
-private fun updateManifest(manifest: Manifest, compilerLibDir: Path): Manifest {
-    val ccpAttribute = "Kotlin-Compiler-Class-Path"
-    val compilerClassPath = manifest.mainAttributes.getValue(ccpAttribute) ?: error("no $ccpAttribute in manifest")
-    manifest.mainAttributes.putValue(ccpAttribute, compilerClassPath.split(Regex("\\s+")).joinToString(" ") { spec ->
-        val (groupId, artifactId, version, classifier) = spec.split(':')
-        "$groupId:$artifactId:$version:$classifier:sha256=" + compilerLibDir.resolve("$artifactId.jar").sha256()
-    })
-    return manifest
 }
 
 private fun getTimeStamp(): OffsetDateTime {
@@ -86,6 +95,53 @@ private fun getTimeStamp(): OffsetDateTime {
     val rc = p.waitFor()
     if (rc != 0) error("git terminated with exit code $rc")
     return OffsetDateTime.parse(output.trim())
+}
+
+private fun gitLsTree(path: Path, baseDir: Path? = path.parent): String {
+    val rel = if (baseDir == null) path else path.relativeTo(baseDir)
+    val p = ProcessBuilder(
+        "git", "ls-tree", "HEAD", rel.pathString)
+        .apply {
+            if (baseDir != null) {
+                directory(baseDir.toFile())
+            }
+        }
+        .inheritIO()
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        .start()
+    val output = p.inputStream.use { `in` -> String(`in`.readBytes()) }
+    val rc = p.waitFor()
+    if (rc != 0) error("git terminated with exit code $rc")
+    return output.trim()
+}
+
+private fun gitCatFile(path: Path, baseDir: Path? = path.parent): String {
+    val sha = gitLsTree(path, baseDir).split(Regex("""\s+""")).getOrNull(2)
+    val p = ProcessBuilder("git", "cat-file", "blob", sha)
+        .apply {
+            if (baseDir != null) {
+                directory(baseDir.toFile())
+            }
+        }
+        .inheritIO()
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        .start()
+    val output = p.inputStream.use { `in` -> String(`in`.readBytes()) }
+    val rc = p.waitFor()
+    if (rc != 0) error("git terminated with exit code $rc")
+    return output
+}
+
+private val trimRegex = Regex(
+    """(^\s*).*(\s*)$""",
+    setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+)
+
+private fun replaceKeepWs(input: String, replace: String): String {
+    return input.replace(trimRegex) { mr ->
+        val (prefix, suffix) = mr.destructured
+        "${prefix}${replace}$suffix"
+    }
 }
 
 private fun canonicalizeManifest(data: ByteArray): ByteArray {
@@ -139,7 +195,9 @@ private fun canonicalizeManifest(data: ByteArray): ByteArray {
 }
 
 private fun canonicalizeJar(
-    input: Path, output: OutputStream, ts: Instant,
+    input: Path,
+    output: OutputStream,
+    ts: Instant,
     transformManifest: (Manifest) -> Unit = {}
 ) {
     ZipFile(input.toFile()).use { zf ->
@@ -178,59 +236,28 @@ private fun canonicalizeJar(
     input: Path, output: Path, ts: Instant,
     transformManifest: (Manifest) -> Unit = {}
 ) {
-    Files.newOutputStream(output).use { out ->
+    output.outputStream().use { out ->
         canonicalizeJar(input, out, ts, transformManifest)
     }
 }
 
 private fun compileLauncher(
-    sources: Path, output: OutputStream, ts: Instant,
+    sources: Path,
+    output: OutputStream,
+    ts: Instant,
     manifest: String,
-    repo: Path, kotlinScriptDependencies: List<String>
+    kotlinScriptVersion: String,
+    mainJar: Path
 ) {
-    val javaSource = sources.resolve("kotlin_script/Launcher.java")
-    val updatedSource = mutableListOf<String>()
-    javaSource.useLines { lines ->
-        var st = 0
-        for (line in lines) {
-            when (st) {
-                0 -> {
-                    updatedSource += line
-                    if (line.trim() == "private final String[] dependencies = new String[] {") {
-                        for (subPath in kotlinScriptDependencies) {
-                            updatedSource += "            \"$subPath\","
-                        }
-                        st = 1
-                    }
-                    if (line.trim() == "private final byte[][] checksums = new byte[][] {") {
-                        for (subPath in kotlinScriptDependencies) {
-                            val md = MessageDigest.getInstance("SHA-256")
-                            md.update(repo.resolve(subPath).readBytes())
-                            updatedSource += md.digest().joinToString(", ", "            new byte[]{", "},")
-                        }
-                        st = 1
-                    }
-                    if (line.trim() == "private final long[] sizes = new long[] {") {
-                        for (subPath in kotlinScriptDependencies) {
-                            updatedSource += "            ${repo.resolve(subPath).fileSize()}L,"
-                        }
-                        st = 1
-                    }
-                }
-                1 -> if (line.trim() == "};") {
-                    updatedSource += line
-                    st = 0
-                }
-                else -> error("invalid st: $st")
-            }
-        }
-    }
-    javaSource.writer().use { w ->
-        for (line in updatedSource) {
-            w.appendLine(line)
-        }
-    }
-    val tmpDir = Files.createTempDirectory("launcher")
+    UpdateLauncherCommand.main(
+        listOf(
+            "--kotlin-script-version", kotlinScriptVersion,
+            "--update-jar-sha256", mainJar.sha256(),
+            "--update-jar-size", mainJar.fileSize().toString(),
+            (sources / "kotlin_script/Launcher.java").absolutePathString()
+        )
+    )
+    val tmpDir = createTempDirectory("launcher")
     try {
         BatchCompiler.compile(
             arrayOf(
@@ -254,14 +281,14 @@ private fun compileLauncher(
                 }
             }
         )
-        Files.createDirectories(tmpDir.resolve("META-INF"))
-        Files.newOutputStream(tmpDir.resolve("META-INF/MANIFEST.MF")).use { mfOut ->
+        val metaInf = (tmpDir / "META-INF").createDirectories()
+        (metaInf / "MANIFEST.MF").outputStream().use { mfOut ->
             mfOut.write(canonicalizeManifest(manifest.toByteArray()))
         }
         val names = mutableListOf<String>()
         Files.walk(tmpDir).forEach { f ->
             if (f != tmpDir) {
-                if (Files.isDirectory(f)) {
+                if (f.isDirectory()) {
                     names.add(tmpDir.relativize(f).toString() + "/")
                 } else {
                     names.add(tmpDir.relativize(f).toString())
@@ -278,7 +305,7 @@ private fun compileLauncher(
             if (!name.endsWith("/")) {
                 zeOut.method = ZipArchiveEntry.DEFLATED
                 zOut.putArchiveEntry(zeOut)
-                Files.newInputStream(tmpDir.resolve(name)).use { `in` ->
+                (tmpDir / name).inputStream().use { `in` ->
                     `in`.copyTo(zOut)
                 }
             } else {
@@ -291,11 +318,11 @@ private fun compileLauncher(
         // cleanup temp dir
         Files.walkFileTree(tmpDir, object : FileVisitor<Path> {
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                Files.delete(file)
+                file.deleteExisting()
                 return FileVisitResult.CONTINUE
             }
             override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                Files.delete(dir)
+                dir.deleteExisting()
                 return FileVisitResult.CONTINUE
             }
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
@@ -308,76 +335,328 @@ private fun compileLauncher(
     }
 }
 
-fun main(args: Array<String>) {
-    val ts = getTimeStamp().toInstant()
-    println("--> git timestamp is $ts")
+private object UpdateMainCommand : CliktCommand(
+    name = "update-main-sources"
+) {
+    private val source by argument()
+        .path(mustBeReadable = true, mustBeWritable = true)
 
-    val mainJar = Paths.get(args.single())
+    private val kotlinScriptVersion by option().required()
+    private val kotlinCompilerDependencies by option().required()
+    private val kotlinCompilerClassPath by option().required()
 
-    val home = Paths.get(System.getProperty("user.home"))
-    val repo = home.resolve(".m2/repository")
+    override fun run() {
+        val dependencies = kotlinCompilerDependencies.split(Regex("""\s+"""))
+            .zip(kotlinCompilerClassPath.split(':'))
+            .map { (spec, path) ->
+                parseDependency(spec).copy(sha256 = Path(path).sha256())
+            }
 
-    val tmp = Files.createTempFile("kotlin_script", ".jar")
-    canonicalizeJar(mainJar, tmp, ts) { manifest ->
-        val kotlinVersion = manifest.mainAttributes.getValue("Kotlin-Compiler-Version")
-            ?: error("no Kotlin-Compiler-Version in manifest")
-        val compilerLibDir = mainJar.parent.resolve("kotlin-compiler-$kotlinVersion/kotlinc/lib")
-        updateManifest(manifest, compilerLibDir)
+        val kotlinStdlib = dependencies.first { d -> d.artifactId == "kotlin-stdlib" }
+        val kotlinScriptRev = kotlinScriptVersion.removePrefix("${kotlinStdlib.version}.")
+        require(kotlinScriptRev.all { it.isDigit() })
+        require(kotlinScriptRev.isNotBlank())
+
+        val sourceText = gitCatFile(source)
+        require(sourceText == source.readText()) {
+            "$source has been modified"
+        }
+        val modifiedSource = sourceText
+            .replace(Regex("""KOTLIN_VERSION = ".*?"""")) { _ ->
+                """KOTLIN_VERSION = "${kotlinStdlib.version}""""
+            }
+            .replace(Regex("""KOTLIN_SCRIPT_VERSION = ".*?"""")) { _ ->
+                """KOTLIN_SCRIPT_VERSION = "${'$'}KOTLIN_VERSION.$kotlinScriptRev""""
+            }
+            .replace(
+                Regex(
+                    """(kotlinStdlibDependency = Dependency)\((.*?),(.*?),(.*?),(\s*sha256 = ".*?")""",
+                    setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+                )
+            ) { mr ->
+                val (prefix, g, a, v, sha256) = mr.destructured
+                buildString {
+                    append(prefix)
+                    append("(")
+                    append(replaceKeepWs(g, "groupId = KOTLIN_GROUP_ID"))
+                    append(",")
+                    append(replaceKeepWs(a, "artifactId = \"kotlin-stdlib\""))
+                    append(",")
+                    append(replaceKeepWs(v, "version = KOTLIN_VERSION"))
+                    append(",")
+                    append(replaceKeepWs(sha256, "sha256 = \"${kotlinStdlib.sha256}\""))
+                }
+            }
+            .replace(
+                Regex(
+                    """(// BEGIN_COMPILER_CLASS_PATH\s*).*(// END_COMPILER_CLASS_PATH)""",
+                    setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+                )
+            ) { mr ->
+                val (prefix, suffix) = mr.destructured
+                val indent = prefix.substringAfter("\n")
+                buildString {
+                    append(prefix)
+                    append("kotlinStdlibDependency,\n")
+                    append(indent)
+                    for (d in dependencies) {
+                        when {
+                            d == kotlinStdlib -> {}
+                            d.groupId == kotlinStdlib.groupId &&
+                                    d.version == kotlinStdlib.version -> {
+                                append("Dependency(\n")
+                                append(indent)
+                                append("    groupId = KOTLIN_GROUP_ID,\n")
+                                append(indent)
+                                append("    artifactId = \"")
+                                append(d.artifactId)
+                                append("\",\n")
+                                append(indent)
+                                append("    version = KOTLIN_VERSION,\n")
+                                append(indent)
+                                append("    sha256 = \"")
+                                append(d.sha256)
+                                append("\"\n")
+                                append(indent)
+                                append("),\n")
+                                append(indent)
+                            }
+
+                            else -> {
+                                append("Dependency(\n")
+                                append(indent)
+                                append("    groupId = \"")
+                                append(d.groupId)
+                                append("\",\n")
+                                append(indent)
+                                append("    artifactId = \"")
+                                append(d.artifactId)
+                                append("\",\n")
+                                append(indent)
+                                append("    version = \"")
+                                append(d.version)
+                                append("\",\n")
+                                append(indent)
+                                append("    sha256 = \"")
+                                append(d.sha256)
+                                append("\"\n")
+                                append(indent)
+                                append("),\n")
+                                append(indent)
+                            }
+                        }
+                    }
+                    append(suffix)
+                }
+            }
+        source.writeText(modifiedSource)
     }
+}
 
-    val manifest = ZipFile(mainJar.toFile()).use { z ->
-        z.getInputStream(z.getEntry("META-INF/MANIFEST.MF")).use { `in` -> Manifest(`in`) }
+private object UpdateLauncherCommand : CliktCommand(
+    name = "update-launcher-sources"
+) {
+    private val source by argument()
+        .path(mustBeReadable = true, mustBeWritable = true)
+
+    private val kotlinScriptVersion by option().required()
+
+    private val kotlinScriptDependencies by option()
+    private val kotlinScriptClassPath by option()
+
+    private val updateJarSha256 by option()
+    private val updateJarSize by option().long()
+
+    override fun run() {
+        val dependencies = kotlinScriptDependencies
+            ?.split(Regex("""\s+"""))
+            ?.map { spec -> parseDependency(spec) }
+        val classPath = kotlinScriptClassPath
+            ?.split(':')
+            ?.map { path -> Path(path) }
+
+        val kotlinVersion = kotlinScriptVersion.substringBeforeLast('.')
+        val kotlinScriptRev = kotlinScriptVersion.removePrefix("$kotlinVersion.")
+        require(kotlinScriptRev.all { it.isDigit() })
+        require(kotlinScriptRev.isNotBlank())
+
+        val sourceText = gitCatFile(source)
+        require(sourceText == source.readText()) {
+            "$source has been modified"
+        }
+        val modifiedSource = sourceText
+            .replace(Regex("""kotlinVersion = ".*?"""")) { _ ->
+                """kotlinVersion = "$kotlinVersion""""
+            }
+            .replace(Regex("""kotlinScriptVersion = ".*?"""")) { _ ->
+                """kotlinScriptVersion = kotlinVersion + ".$kotlinScriptRev""""
+            }
+            .replace(
+                Regex(
+                    """(// BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES\s*)(.*?\n)(.*)(// END_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES)""",
+                    setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+                )
+            ) { mr ->
+                val (prefix, _, otherLines, suffix) = mr.destructured
+                val indent = prefix.substringAfter("\n")
+                buildString {
+                    append(prefix)
+                    append("\"org/cikit/kotlin_script/")
+                    append(kotlinScriptVersion)
+                    append("/kotlin_script-")
+                    append(kotlinScriptVersion)
+                    append(".jar\",\n")
+                    if (dependencies == null) {
+                        append(otherLines)
+                    } else {
+                        append(indent)
+                        for (d in dependencies) {
+                            append("\"")
+                            append(d.subPath)
+                            append("\",\n")
+                            append(indent)
+                        }
+                    }
+                    append(suffix)
+                }
+            }
+            .replace(
+                Regex(
+                    """(// BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS\s*)(.*?\n)(.*)(// END_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS)""",
+                    setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+                )
+            ) { mr ->
+                val (prefix, firstLine, otherLines, suffix) = mr.destructured
+                val indent = prefix.substringAfter("\n")
+                buildString {
+                    append(prefix)
+                    updateJarSha256?.let { sha256 ->
+                        append("new byte[]{")
+                        append(sha256.chunked(2).joinToString(", ") { it.toInt(16).toByte().toString() })
+                        append("},\n")
+                    } ?: append(firstLine)
+                    if (classPath == null) {
+                        append(otherLines)
+                    } else {
+                        append(indent)
+                        for (f in classPath) {
+                            append("new byte[]{")
+                            append(f.sha256().chunked(2).joinToString(", ") { it.toInt(16).toByte().toString() })
+                            append("},\n")
+                            append(indent)
+                        }
+                    }
+                    append(suffix)
+                }
+            }
+            .replace(
+                Regex(
+                    """(// BEGIN_KOTLIN_SCRIPT_DEPENDENCY_SIZES\s*)(.*?\n)(.*)(// END_KOTLIN_SCRIPT_DEPENDENCY_SIZES)""",
+                    setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
+                )
+            ) { mr ->
+                val (prefix, firstLine, otherLines, suffix) = mr.destructured
+                val indent = prefix.substringAfter("\n")
+                buildString {
+                    append(prefix)
+                    updateJarSize?.let { size ->
+                        append(size)
+                        append("L,\n")
+                    } ?: append(firstLine)
+                    if (classPath == null) {
+                        append(otherLines)
+                    } else {
+                        append(indent)
+                        for (f in classPath) {
+                            append(f.fileSize())
+                            append("L,\n")
+                            append(indent)
+                        }
+                    }
+                    append(suffix)
+                }
+            }
+        source.writeText(modifiedSource)
     }
+}
 
-    val pom = ZipFile(mainJar.toFile()).use { z ->
-        z.getInputStream(z.getEntry("META-INF/maven/org.cikit/kotlin_script/pom.xml")).use { `in` -> String(`in`.readBytes()) }
-    }
+private object InstallMainJar : CliktCommand(
+    name = "install-main-jar",
+    help = "install precompiled kotlin_script to local repository"
+) {
+    private val mainJar by argument().path(mustBeReadable = true)
 
-    val kotlinScriptVersion = manifest.mainAttributes.getValue("Implementation-Version")
-    val kotlinScriptDependencies = listOf(
-        "org/cikit/kotlin_script/$kotlinScriptVersion/kotlin_script-$kotlinScriptVersion.jar"
-    ) + manifest.mainAttributes.getValue("Kotlin-Script-Class-Path").split(' ').map { d ->
-        val (groupId, artifactId, version) = d.split(':')
-        groupId.replace('.', '/') + "/$artifactId/$version/$artifactId-$version.jar"
-    }
+    override fun run() {
+        val ts = getTimeStamp().toInstant()
+        println("--> git timestamp is $ts")
 
-    val repoKotlinScript = repo.resolve("org/cikit/kotlin_script/$kotlinScriptVersion")
-    Files.createDirectories(repoKotlinScript)
+        val home = Path(System.getProperty("user.home"))
+        val repo = home / ".m2" / "repository"
 
-    repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.pom").toFile().writeText(pom)
+        val tmp = createTempFile("kotlin_script", ".jar")
+        canonicalizeJar(mainJar, tmp, ts)
 
-    val mainJarTgt = repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.jar")
-    Files.move(tmp, mainJarTgt, StandardCopyOption.REPLACE_EXISTING)
+        val manifest = ZipFile(mainJar.toFile()).use { z ->
+            z.getInputStream(z.getEntry("META-INF/MANIFEST.MF")).use { `in` -> Manifest(`in`) }
+        }
 
-    for (item in listOf(
-        "kotlin_script-$kotlinScriptVersion-javadoc.jar",
-        "kotlin_script-$kotlinScriptVersion-sources.jar",
-    )) {
-        canonicalizeJar(mainJar.parent.resolve(item), repoKotlinScript.resolve(item), ts)
-    }
+        val pom = ZipFile(mainJar.toFile()).use { z ->
+            z.getInputStream(z.getEntry("META-INF/maven/org.cikit/kotlin_script/pom.xml"))
+                .use { `in` -> String(`in`.readBytes()) }
+        }
 
-    val scriptTgt = repoKotlinScript.resolve("kotlin_script-$kotlinScriptVersion.sh")
-    FileReader("kotlin_script.sh").use { r ->
-        Files.newOutputStream(scriptTgt).use { out ->
-            val w = out.bufferedWriter()
-            r.useLines { lines ->
+        val kotlinScriptVersion = manifest.mainAttributes.getValue("Implementation-Version")
+
+        val repoKotlinScript = repo / "org/cikit/kotlin_script/$kotlinScriptVersion"
+        repoKotlinScript.createDirectories()
+
+        (repoKotlinScript / "kotlin_script-$kotlinScriptVersion.pom").writeText(pom)
+
+        val mainJarTgt = repoKotlinScript / "kotlin_script-$kotlinScriptVersion.jar"
+        tmp.moveTo(mainJarTgt, true)
+
+        for (item in listOf(
+            "kotlin_script-$kotlinScriptVersion-javadoc.jar",
+            "kotlin_script-$kotlinScriptVersion-sources.jar",
+        )) {
+            canonicalizeJar(mainJar.parent / item, repoKotlinScript / item, ts)
+        }
+
+        val scriptTgt = repoKotlinScript / "kotlin_script-$kotlinScriptVersion.sh"
+        Path("kotlin_script.sh").useLines { lines ->
+            scriptTgt.outputStream().use { out ->
+                val w = out.bufferedWriter()
                 for (line in lines) {
                     w.write(line)
                     w.write("${'\n'}")
                 }
+                w.flush()
+                val mfStr = "Manifest-Version: 1.0\n" +
+                        "Implementation-Title: kotlin_script\n" +
+                        "Implementation-Version: $kotlinScriptVersion\n" +
+                        "Implementation-Vendor: cikit.org\n" +
+                        "Main-Class: kotlin_script.Launcher\n"
+                compileLauncher(Path("launcher"), out, ts, mfStr, kotlinScriptVersion, mainJarTgt)
             }
-            w.flush()
-            val mfStr = "Manifest-Version: 1.0\n" +
-                    "Implementation-Title: kotlin_script\n" +
-                    "Implementation-Version: $kotlinScriptVersion\n" +
-                    "Implementation-Vendor: cikit.org\n" +
-                    "Main-Class: kotlin_script.Launcher\n"
-            compileLauncher(Paths.get("launcher"), out, ts, mfStr, repo, kotlinScriptDependencies)
         }
-    }
 
-    val readme = File("README.md").readText()
+        val readme = File("README.md").readText()
             .replace(Regex("^v=[^\n]+", RegexOption.MULTILINE), "v=$kotlinScriptVersion")
             .replace(Regex("\"[0-9a-f]{64} \"\\*\\)"), "\"${scriptTgt.sha256()} \"*)")
-    File("README.md").writeText(readme)
+        File("README.md").writeText(readme)
+    }
 }
+
+private object InstallCommand: CliktCommand(
+    name = "install",
+    help = "install precompiled kotlin_script to local repository"
+) {
+    init {
+        subcommands(UpdateMainCommand, UpdateLauncherCommand, InstallMainJar)
+    }
+
+    override fun run() {
+    }
+}
+
+fun main(args: Array<String>) = InstallCommand.main(args)

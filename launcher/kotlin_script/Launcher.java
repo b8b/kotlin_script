@@ -2,7 +2,6 @@ package kotlin_script;
 
 import javax.net.ssl.*;
 import java.io.*;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -41,36 +40,42 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     private final Path localRepo;
 
     private final String kotlinVersion = "1.9.21";
-    private final String kotlinScriptVersion = kotlinVersion + ".19";
+    private final String kotlinScriptVersion = kotlinVersion + ".20";
     private final Path cacheDir;
 
     private final String[] dependencies = new String[] {
-            "org/cikit/kotlin_script/1.9.21.19/kotlin_script-1.9.21.19.jar",
+            // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
+            "org/cikit/kotlin_script/1.9.21.20/kotlin_script-1.9.21.20.jar",
             "com/github/ajalt/mordant/mordant-jvm/2.2.0/mordant-jvm-2.2.0.jar",
             "com/github/ajalt/colormath/colormath-jvm/3.3.1/colormath-jvm-3.3.1.jar",
             "org/jetbrains/markdown-jvm/0.5.2/markdown-jvm-0.5.2.jar",
             "org/jetbrains/kotlin/kotlin-stdlib/1.9.21/kotlin-stdlib-1.9.21.jar",
             "net/java/dev/jna/jna/5.13.0/jna-5.13.0.jar",
             "it/unimi/dsi/fastutil-core/8.5.12/fastutil-core-8.5.12.jar",
+            // END_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
     };
 
     private final byte[][] checksums = new byte[][] {
-            new byte[]{-43, 77, 33, -102, 38, 16, -95, 90, 34, 54, -31, 62, -5, -96, -109, 32, -40, -71, 103, 120, 96, 83, -84, 5, 106, 16, 45, -40, -77, 37, -72, -59},
+            // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
+            new byte[]{-22, 13, -37, -93, -120, 0, -51, -57, 111, 40, 111, 5, -49, 59, -19, 11, -40, 41, 115, 112, -16, -53, 11, -23, -73, 76, 50, 3, -39, -22, 114, -104},
             new byte[]{47, -91, -98, 91, -127, -81, -52, 113, -74, -85, 97, 40, -78, 118, 118, -1, -58, 17, -48, -93, -63, -126, -21, -64, -28, 55, -77, 102, 106, -75, 98, 1},
             new byte[]{38, 19, 40, 52, 21, -30, -31, 38, 97, 105, 125, -57, 41, 90, -38, -38, 15, 96, -20, 23, -20, -4, -81, 62, -15, -60, -18, 15, -37, 120, -119, 19},
             new byte[]{114, 100, -124, 71, 114, 96, -91, 82, -36, 124, 25, -80, -99, 70, 86, -60, -118, -29, -79, 13, -78, 114, 80, 0, -31, -126, -42, 21, -107, 41, -76, 110},
             new byte[]{59, 71, -109, 19, -85, 108, -82, -92, -27, -30, 93, 61, -18, -116, -88, 12, 48, 44, -119, -70, 115, -31, -81, 77, -81, -86, 16, 15, 110, -7, 41, 106},
             new byte[]{102, -44, -8, 25, -96, 98, -91, 26, 29, 86, 39, -65, -4, 35, -6, -59, 93, 22, 119, -16, -32, -95, -2, -70, 20, 74, -85, -35, 103, 10, 100, -69},
             new byte[]{-13, 28, 32, -11, -80, 99, 18, -13, -43, -32, 110, 97, 96, -93, 46, 39, 77, -127, -102, -90, -50, -65, 39, 82, -117, 38, -74, -75, -64, -63, -33, 25},
+            // END_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
     };
     private final long[] sizes = new long[] {
-            67348L,
+            // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_SIZES
+            63047L,
             553121L,
             353666L,
             539307L,
             1718945L,
             1879325L,
             6428331L,
+            // END_KOTLIN_SCRIPT_DEPENDENCY_SIZES
     };
 
     private SSLSocketFactory _sf = null;
@@ -196,21 +201,26 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
 
     @Override
     public void run() {
-        String spinner = "|/-\\";
+        String spinner = "|\\-/";
         int offset = 0;
+        long lastPrint = -1L;
         while (progressMsg != null) {
             try {
                 synchronized (progressLock) {
-                    if (offset > 0) {
-                        System.err.write((byte) 0x0d);
+                    final long thisPrint = System.currentTimeMillis();
+                    if (thisPrint - lastPrint >= 200L) {
+                        if (offset > 0) {
+                            System.err.write((byte) 0x0d);
+                        }
+                        System.err.write((byte) spinner.charAt((offset / 2) % spinner.length()));
+                        offset++;
+                        final String msg = String.format("   %.2f%%  %s",
+                                ((double) progressDone) / ((double) progressTotal) * 100.0,
+                                progressMsg);
+                        System.err.write(msg.getBytes(StandardCharsets.US_ASCII));
+                        System.err.flush();
+                        lastPrint = thisPrint;
                     }
-                    System.err.write((byte) spinner.charAt((offset / 2) % spinner.length()));
-                    offset++;
-                    final String msg = String.format("   %.2f%%  %s",
-                            ((double) progressDone) / ((double) progressTotal) * 100.0,
-                            progressMsg);
-                    System.err.write(msg.getBytes(StandardCharsets.US_ASCII));
-                    System.err.flush();
                     progressLock.wait(200);
                 }
             } catch (IOException e) {
@@ -259,19 +269,22 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
 
     private boolean copyFromLocalMirror(String sourcePath, Path target, byte[] sha256) throws IOException {
         final Path source = localMirror.resolve(sourcePath);
-        if (Files.isReadable(source)) {
+        if (!Files.isReadable(source)) {
             return false;
         }
         try (InputStream in = Files.newInputStream(source)) {
             final Path tmp = createTempFile(target);
-            try (OutputStream out = Files.newOutputStream(tmp)) {
-                if (trace) {
-                    System.err.println("++ cp " + source + " " + target);
+            try {
+                try (OutputStream out = Files.newOutputStream(tmp)) {
+                    if (trace) {
+                        System.err.println("++ cp " + source + " " + target);
+                    }
+                    md.reset();
+                    copy(in, out, md);
                 }
-                md.reset();
-                copy(in, out, md);
                 final byte[] actualSha256 = md.digest();
                 if (Arrays.equals(sha256, actualSha256)) {
+                    Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
                     return true;
                 }
             } finally {
@@ -371,7 +384,6 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
         }
         final List<String> dependencies = new ArrayList<>();
         final List<String> includes = new ArrayList<>();
-        final boolean executeKts = scriptFile.getFileName().toString().endsWith(".kts");
         String mainClass = null;
         try (BufferedReader reader = Files.newBufferedReader(scriptMetadata)) {
             while (true) {
@@ -482,23 +494,14 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
         }
 
         if (trace) {
-            if (executeKts) {
-                System.err.println("++ " + mainClass + "(" + Arrays.toString(args) + ")");
-            } else {
-                System.err.println("++ " + mainClass + ".main(" + Arrays.toString(args) + ")");
-            }
+            System.err.println("++ " + mainClass + ".main(" + Arrays.toString(args) + ")");
         }
         classPath[0] = jarToExecute.toUri().toURL();
         final URLClassLoader cl = new URLClassLoader(classPath, Launcher.class.getClassLoader());
         Thread.currentThread().setContextClassLoader(cl);
         final Class<?> clazz = cl.loadClass(mainClass);
-        if (executeKts) {
-            final Constructor<?> c = clazz.getConstructor(String[].class);
-            c.newInstance((Object) args);
-        } else {
-            final Method mainMethod = clazz.getMethod("main", String[].class);
-            mainMethod.invoke(null, (Object) args);
-        }
+        final Method mainMethod = clazz.getMethod("main", String[].class);
+        mainMethod.invoke(null, (Object) args);
     }
 
     private Path executeCompiler() throws IOException, ClassNotFoundException,
