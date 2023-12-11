@@ -266,6 +266,10 @@ class KotlinScript(
         val compileClassPath = metaData.dep
             .filter { d -> d.scope == Scope.Compile }
             .map { d -> resolveLib(d).toAbsolutePath() }
+        // resolve runtime dependencies
+        metaData.dep
+            .filter { d -> d.scope == Scope.Runtime }
+            .forEach { d -> resolveLib(d) }
         val targetFile = jarCachePath(metaData)
         if (!force && targetFile.isReadable()) return metaData
 
@@ -441,7 +445,7 @@ class KotlinScript(
         private const val KOTLIN_VERSION = "1.9.21"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.20"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.21"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,

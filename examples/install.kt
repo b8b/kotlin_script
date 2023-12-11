@@ -488,7 +488,7 @@ private object UpdateLauncherCommand : CliktCommand(
             .replace(Regex("""kotlinVersion = ".*?"""")) { _ ->
                 """kotlinVersion = "$kotlinVersion""""
             }
-            .replace(Regex("""kotlinScriptVersion = ".*?"""")) { _ ->
+            .replace(Regex("""kotlinScriptVersion = kotlinVersion \+ ".*?"""")) { _ ->
                 """kotlinScriptVersion = kotlinVersion + ".$kotlinScriptRev""""
             }
             .replace(

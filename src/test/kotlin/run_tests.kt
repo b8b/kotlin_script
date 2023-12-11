@@ -189,7 +189,6 @@ fun setupLocalRepo() {
 }
 
 fun setupInitialRepo() {
-    setupScripts()
     if (initialRepo.exists()) cleanup(initialRepo)
 
     //copy kotlin_script
@@ -199,6 +198,19 @@ fun setupInitialRepo() {
         (libsDir / f).copyTo(ksSubdir / f, true)
     }
 
+    baseDir.createDirectories()
+    (baseDir / "test.kt").writer().use { w ->
+        w.write(embeddedInstaller)
+        w.write("""
+                    |
+                    |///DEP=org.slf4j:slf4j-api:1.7.36
+                    |///RDEP=org.slf4j:slf4j-simple:1.7.36
+                    |
+                    |fun main() {
+                    |    println("hello world!")
+                    |}
+                    |""".trimMargin())
+    }
     runScript(
         "setup_repo.out",
         "env",

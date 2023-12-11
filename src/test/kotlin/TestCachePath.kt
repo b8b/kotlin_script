@@ -42,10 +42,11 @@ class TestCachePath {
             w.write(embeddedInstaller)
             w.write("""
                 |
-                |///DEP=net.java.dev.jna:jna:5.13.0
+                |///DEP=org.slf4j:slf4j-api:1.7.36
+                |///RDEP=org.slf4j:slf4j-simple:1.7.36
                 |
                 |fun main() {    
-                |    println(com.sun.jna.Native.DEFAULT_ENCODING)
+                |    println(Class.forName("org.slf4j.impl.SimpleLogger"))
                 |}
                 |""".trimMargin())
         }
@@ -54,7 +55,7 @@ class TestCachePath {
             "env", *env, "script_file=test2.kt",
             zsh, "-xy", "test2.kt"
         )
-        (localRepo / "net/java/dev/jna/jna/5.13.0/jna-5.13.0.jar").deleteExisting()
+        (localRepo / "org/slf4j/slf4j-simple/1.7.36/slf4j-simple-1.7.36.jar").deleteExisting()
         val logFileName = "test2_all_cached.out"
         runScript(
             logFileName,
