@@ -1,6 +1,7 @@
 import assertk.assertThat
 import assertk.assertions.isEmpty
 import assertk.assertions.isNotEmpty
+import org.junit.jupiter.api.Test
 import kotlin.io.path.*
 
 class TestCachePath {

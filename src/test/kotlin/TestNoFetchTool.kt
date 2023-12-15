@@ -1,5 +1,6 @@
 import assertk.assertFailure
 import assertk.assertions.hasClass
+import org.junit.jupiter.api.Test
 import java.nio.file.Files
 
 class TestNoFetchTool {

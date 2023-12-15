@@ -1,16 +1,12 @@
-import org.jetbrains.kotlin.gradle.plugin.getKotlinPluginVersion
-
 plugins {
-    val kotlinVersion = "1.9.21"
-
-    kotlin("jvm") version kotlinVersion
-    kotlin("plugin.serialization") version kotlinVersion
+    kotlin("jvm")
+    kotlin("plugin.serialization")
     id("org.jetbrains.dokka") version "1.9.10"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.9.21.21"
+version = "1.9.21.22"
 
 java {
     toolchain {
@@ -58,6 +54,7 @@ dependencies {
 
     testImplementation("org.apache.bcel:bcel:6.7.0")
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.28.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
 
     examplesImplementation(main.runtimeClasspath)
     examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
@@ -73,11 +70,7 @@ dependencies {
     examplesImplementation("com.github.ajalt.clikt:clikt-jvm:4.2.1")
 }
 
-val sourcesJar by tasks.creating(Jar::class) {
-    group = "build"
-    archiveClassifier.set("sources")
-    from(main.allSource)
-}
+val kotlinSourcesJar by tasks
 
 val dokkaJar by tasks.creating(Jar::class) {
     group = JavaBasePlugin.DOCUMENTATION_GROUP
@@ -86,24 +79,14 @@ val dokkaJar by tasks.creating(Jar::class) {
     from(tasks["dokkaJavadoc"])
 }
 
-val launcherJar by tasks.creating(Jar::class) {
-    group = "build"
-    archiveClassifier.set("launcher")
-    from(launcher.output)
-    manifest {
-        attributes["Implementation-Title"] = "kotlin_script.launcher"
-        attributes["Implementation-Version"] = archiveVersion
-        attributes["Implementation-Vendor"] = "cikit.org"
-        attributes["Main-Class"] = "kotlin_script.Launcher"
-    }
-}
-
 val mainJar by tasks.named<Jar>("jar")
 
-tasks.named<Jar>("jar") {
+tasks.jar {
     dependsOn("generatePomFileForMavenJavaPublication")
     into("META-INF/maven/${project.group}/${project.name}") {
-        from(File(buildDir, "publications/mavenJava"))
+        from(layout.buildDirectory.dir("publications/mavenJava")) {
+            include("pom-default.xml")
+        }
         rename(".*", "pom.xml")
     }
     manifest {
@@ -113,11 +96,15 @@ tasks.named<Jar>("jar") {
     }
 }
 
+tasks.test {
+    useJUnitPlatform()
+}
+
 tasks.create<JavaExec>("updateMainSources") {
     group = "Execution"
     description = "update sources with dependency information"
     classpath = examples.runtimeClasspath
-    mainClass.set("InstallKt")
+    mainClass = "InstallKt"
     val compilerClassPath = configurations.kotlinCompilerClasspath.get()
         .resolvedConfiguration
         .resolvedArtifacts
@@ -149,10 +136,13 @@ tasks.create<JavaExec>("updateLauncherSources") {
     group = "Execution"
     description = "update sources with dependency information"
     classpath = examples.runtimeClasspath
-    mainClass.set("InstallKt")
-    val classPath = configurations.runtimeClasspath.get().resolvedConfiguration.resolvedArtifacts
-        .filterNot { it.moduleVersion.id.name.startsWith("kotlin-stdlib-") ||
-                it.moduleVersion.id.name == "annotations"
+    mainClass = "InstallKt"
+    val classPath = configurations.runtimeClasspath.get()
+        .resolvedConfiguration
+        .resolvedArtifacts
+        .filterNot {
+            it.moduleVersion.id.name.startsWith("kotlin-stdlib-") ||
+                    it.moduleVersion.id.name == "annotations"
         }
         .toSet()
     args = listOf(
@@ -179,30 +169,15 @@ tasks.create<JavaExec>("updateLauncherSources") {
 }
 
 tasks.create<JavaExec>("installMainJar") {
-    dependsOn(mainJar, dokkaJar, sourcesJar)
+    dependsOn(mainJar, dokkaJar, kotlinSourcesJar)
     group = "Execution"
     description = "install kotlin_script to local repository"
     classpath = examples.runtimeClasspath
-    mainClass.set("InstallKt")
+    mainClass = "InstallKt"
     args = listOf(
         "install-main-jar",
         mainJar.outputs.files.singleFile.toString()
     )
-}
-
-val copyDependencies by tasks.registering(Copy::class) {
-    val kotlinVersion = getKotlinPluginVersion()
-    group = "build"
-    description = "copy runtime dependencies into build directory"
-    destinationDir = File(buildDir, "libs/kotlin-compiler-$kotlinVersion/kotlinc/lib")
-    from(configurations.kotlinCompilerClasspath)
-    rename { f ->
-        if (kotlinVersion in f) {
-            f.replace("-$kotlinVersion", "")
-        } else {
-            f.replace(Regex("""-\d.*(\.jar)$"""), "\$1")
-        }
-    }
 }
 
 publishing {
@@ -215,16 +190,16 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            artifact(sourcesJar)
+            artifact(kotlinSourcesJar)
             artifact(dokkaJar)
             pom {
-                name.set("kotlin_script")
-                description.set("Lightweight build system for kotlin/jvm")
-                url.set("https://github.com/b8b/kotlin_script")
+                name = "kotlin_script"
+                description = "Lightweight build system for kotlin/jvm"
+                url = "https://github.com/b8b/kotlin_script"
                 licenses {
                     license {
-                        name.set("The Apache License, Version 2.0")
-                        url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                        name = "The Apache License, Version 2.0"
+                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
                     }
                 }
                 developers {
@@ -235,9 +210,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection.set("scm:git:https://github.com/b8b/kotlin_script.git")
-                    developerConnection.set("scm:git:ssh://github.com/b8b/kotlin_script.git")
-                    url.set("https://github.com/b8b/kotlin_script.git")
+                    connection = "scm:git:https://github.com/b8b/kotlin_script.git"
+                    developerConnection = "scm:git:ssh://github.com/b8b/kotlin_script.git"
+                    url = "https://github.com/b8b/kotlin_script.git"
                 }
             }
         }

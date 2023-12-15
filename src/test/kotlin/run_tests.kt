@@ -40,12 +40,23 @@ fi
 ///DEP=com.willowtreeapps.opentest4k:opentest4k-jvm:1.3.0
 ///DEP=org.opentest4j:opentest4j:1.3.0
 
+///DEP=org.junit.jupiter:junit-jupiter:5.10.1
+///DEP=org.junit.jupiter:junit-jupiter-api:5.10.1
+
+///DEP=org.junit.platform:junit-platform-commons:1.10.1
+///DEP=org.apiguardian:apiguardian-api:1.1.2
+
+///DEP=org.junit.jupiter:junit-jupiter-params:5.10.1
+///DEP=org.junit.jupiter:junit-jupiter-engine:5.10.1
+///DEP=org.junit.platform:junit-platform-engine:1.10.1
+
 ///INC=TestBasic.kt
 ///INC=TestCachePath.kt
 ///INC=TestNoFetchTool.kt
 ///INC=TestInvalidHome.kt
 
 import org.apache.bcel.classfile.ClassParser
+import org.junit.jupiter.api.Test
 import java.io.IOException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -61,9 +72,6 @@ import java.util.zip.ZipFile
 import kotlin.io.path.*
 import kotlin.streams.asSequence
 import kotlin.system.exitProcess
-
-@Target(AnnotationTarget.FUNCTION)
-annotation class Test
 
 data class ShellScript(
     val name: String,

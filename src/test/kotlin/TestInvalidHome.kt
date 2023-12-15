@@ -1,5 +1,6 @@
 import assertk.assertThat
 import assertk.assertions.contains
+import org.junit.jupiter.api.Test
 import kotlin.io.path.readLines
 
 class TestInvalidHome {

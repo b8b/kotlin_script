@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.9.21.19
+v=1.9.21.21
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -25,7 +25,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "425beb05a5896b09ee916c5754e8262a837e15b4c40d6e9802f959b37210928e "*) ;;
+  "72fdbaf8238e40303a9115b2c3177c6717a928b60520ccdde7e42b265164f494 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
@@ -33,7 +33,7 @@ fi
 . "$kotlin_script_sh"; exit 2
 */
 
-///DEP=org.cikit:kotlin_script:1.9.21.19
+///DEP=org.cikit:kotlin_script:1.9.21.21
 ///DEP=com.github.ajalt.mordant:mordant-jvm:2.2.0
 ///DEP=com.github.ajalt.colormath:colormath-jvm:3.3.1
 ///DEP=org.jetbrains:markdown-jvm:0.5.2
@@ -49,11 +49,13 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.path
+import com.github.ajalt.mordant.rendering.TextStyles
+import com.github.ajalt.mordant.terminal.Terminal
 import kotlin_script.KotlinScript
 import kotlin_script.loadScript
-import java.nio.file.Files
-import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
+import java.io.File
+import kotlin.io.path.*
+import kotlin.system.exitProcess
 
 private const val DEFAULT_MAVEN_REPO_URL = "https://repo1.maven.org"
 
@@ -97,21 +99,56 @@ private object KotlinScriptCommand: CliktCommand(
         help = "store destination jar (stored in local repo by default)"
     ).path()
 
+    private val nativeImage by option(
+        help = "build native image"
+    ).flag()
+
     private val scriptFile by argument(name = "SCRIPT").path()
     private val scriptArgs by argument(name = "ARG").multiple()
 
     private fun defaultLocalRepo() = System.getProperty("user.home")?.let { p ->
-        Paths.get(p, ".m2/repository")
+        Path(p) / ".m2" / "repository"
     } ?: error("user.home system property not set")
+
+    private fun trace(vararg msg: String) {
+        if (trace) {
+            val terminal = if (progress) Terminal() else null
+            terminal?.let { t ->
+                t.print(TextStyles.bold.invoke("++"), stderr = true)
+                t.print(" ", stderr = true)
+                msg.forEachIndexed { index, arg ->
+                    val part = if (arg.startsWith("/")) {
+                        if (":" in arg) {
+                            val separator = TextStyles.bold.invoke(":")
+                            arg.split(":").joinToString(separator) {
+                                TextStyles.italic.invoke(it)
+                            }
+                        } else {
+                            TextStyles.italic.invoke(arg)
+                        }
+                    } else if (arg.startsWith("-")) {
+                        TextStyles.bold.invoke(arg)
+                    } else {
+                        arg
+                    }
+                    t.print(part, stderr = true)
+                    if (index < msg.size - 1) {
+                        t.print(" ", stderr = true)
+                    }
+                }
+                t.println(stderr = true)
+            } ?: System.err.println("++ ${msg.joinToString(" ")}")
+        }
+    }
 
     override fun run() {
         val localRepoPath = localRepo
-            ?: System.getenv("M2_LOCAL_REPO")?.let { p -> Paths.get(p) }
+            ?: System.getenv("M2_LOCAL_REPO")?.let { p -> Path(p) }
             ?: defaultLocalRepo()
         val ks = KotlinScript(
             mavenRepoUrl = mavenRepoUrl,
             mavenRepoCache = mavenRepoCache
-                ?: System.getenv("M2_LOCAL_MIRROR")?.let { Paths.get(it) },
+                ?: System.getenv("M2_LOCAL_MIRROR")?.let { Path(it) },
             localRepo = localRepoPath,
             progress = progress,
             trace = trace,
@@ -124,11 +161,62 @@ private object KotlinScriptCommand: CliktCommand(
             ?: metaData.storeToRepo(localRepoPath)
         val compiledJar = ks.jarCachePath(metaData)
         val finalJar = destinationJar?.let { f ->
-            Files.copy(compiledJar, f, StandardCopyOption.REPLACE_EXISTING)
+            compiledJar.copyTo(f, true)
             f
         } ?: compiledJar
+
+        val cp = sequenceOf(finalJar) + metaData.dep.asSequence().map { d ->
+            localRepoPath / d.subPath
+        }
+
+        if (nativeImage) {
+            val exe = finalJar.pathString.removeSuffix(".jar") + when {
+                "win" in System.getProperty("os.name").lowercase() -> ".exe"
+                else -> ""
+            }
+            val exeFile = Path(exe)
+            val runNativeImage = force ||
+                    !exeFile.exists() ||
+                    exeFile.getLastModifiedTime().toMillis() <
+                    finalJar.getLastModifiedTime().toMillis()
+            if (runNativeImage) {
+                val args = listOf(
+                    "native-image",
+                    "--verbose",
+                    "--initialize-at-build-time",
+                    "--no-fallback",
+                    "--strict-image-heap",
+                    "--gc=serial",
+                    //"--static",
+                    "-O3",
+                    "-cp", cp.joinToString(File.pathSeparator) { it.pathString },
+                    metaData.main,
+                    "-o", exe
+                )
+                trace(*args.toTypedArray())
+                val rc = ProcessBuilder(args).inheritIO().start().waitFor()
+                if (rc != 0) {
+                    exitProcess(rc)
+                }
+            }
+            if (run) {
+                val runArgs = listOf(exe) + scriptArgs
+                trace(*runArgs.toTypedArray())
+                val rcRun = ProcessBuilder(runArgs).inheritIO().start().waitFor()
+                exitProcess(rcRun)
+            }
+        }
+
         if (run) {
-            TODO("run $finalJar with $scriptArgs")
+            val javaCmd = System.getenv("java_cmd") ?: "java"
+            val args = javaCmd.split(Regex("""\s+""")) + listOf(
+                "-cp", cp.joinToString(File.pathSeparator),
+                metaData.main,
+                *scriptArgs.toTypedArray()
+            )
+            trace(*args.toTypedArray())
+            val rc = ProcessBuilder(args).inheritIO().start().waitFor()
+            exitProcess(rc)
         }
     }
 }

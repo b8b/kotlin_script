@@ -49,7 +49,6 @@ fi
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
-import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.long
@@ -59,7 +58,10 @@ import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
 import org.eclipse.jdt.core.compiler.CompilationProgress
 import org.eclipse.jdt.core.compiler.batch.BatchCompiler
-import java.io.*
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.OutputStream
+import java.io.PrintWriter
 import java.nio.file.FileVisitResult
 import java.nio.file.FileVisitor
 import java.nio.file.Files
@@ -115,17 +117,19 @@ private fun gitLsTree(path: Path, baseDir: Path? = path.parent): String {
     return output.trim()
 }
 
-private fun gitCatFile(path: Path, baseDir: Path? = path.parent): String {
-    val sha = gitLsTree(path, baseDir).split(Regex("""\s+""")).getOrNull(2)
-    val p = ProcessBuilder("git", "cat-file", "blob", sha)
-        .apply {
-            if (baseDir != null) {
-                directory(baseDir.toFile())
-            }
+private fun gitCatFile(path: Path, baseDir: Path? = path.parent): String? {
+    val sha = gitLsTree(path, baseDir)
+        .split(Regex("""\s+"""))
+        .getOrNull(2)
+        ?: return null
+    val p = with (ProcessBuilder("git", "cat-file", "blob", sha)) {
+        if (baseDir != null) {
+            directory(baseDir.toFile())
         }
-        .inheritIO()
-        .redirectOutput(ProcessBuilder.Redirect.PIPE)
-        .start()
+        inheritIO()
+        redirectOutput(ProcessBuilder.Redirect.PIPE)
+        start()
+    }
     val output = p.inputStream.use { `in` -> String(`in`.readBytes()) }
     val rc = p.waitFor()
     if (rc != 0) error("git terminated with exit code $rc")
@@ -358,7 +362,7 @@ private object UpdateMainCommand : CliktCommand(
         require(kotlinScriptRev.isNotBlank())
 
         val sourceText = gitCatFile(source)
-        require(sourceText == source.readText()) {
+        require(sourceText != null && sourceText == source.readText()) {
             "$source has been modified"
         }
         val modifiedSource = sourceText
@@ -481,7 +485,7 @@ private object UpdateLauncherCommand : CliktCommand(
         require(kotlinScriptRev.isNotBlank())
 
         val sourceText = gitCatFile(source)
-        require(sourceText == source.readText()) {
+        require(sourceText != null && sourceText == source.readText()) {
             "$source has been modified"
         }
         val modifiedSource = sourceText
@@ -636,14 +640,22 @@ private object InstallMainJar : CliktCommand(
                         "Implementation-Version: $kotlinScriptVersion\n" +
                         "Implementation-Vendor: cikit.org\n" +
                         "Main-Class: kotlin_script.Launcher\n"
-                compileLauncher(Path("launcher"), out, ts, mfStr, kotlinScriptVersion, mainJarTgt)
+                compileLauncher(
+                    Path("launcher"),
+                    out,
+                    ts,
+                    mfStr,
+                    kotlinScriptVersion,
+                    mainJarTgt
+                )
             }
         }
 
-        val readme = File("README.md").readText()
+        val readmePath = Path("README.md")
+        val readme = readmePath.readText()
             .replace(Regex("^v=[^\n]+", RegexOption.MULTILINE), "v=$kotlinScriptVersion")
             .replace(Regex("\"[0-9a-f]{64} \"\\*\\)"), "\"${scriptTgt.sha256()} \"*)")
-        File("README.md").writeText(readme)
+        readmePath.writeText(readme)
     }
 }
 

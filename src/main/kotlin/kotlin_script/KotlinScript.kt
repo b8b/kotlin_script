@@ -445,7 +445,7 @@ class KotlinScript(
         private const val KOTLIN_VERSION = "1.9.21"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.21"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.22"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
@@ -532,7 +532,8 @@ class KotlinScript(
         }
 
         @JvmStatic
-        fun compileScript(
+        @JvmName("compileScript")
+        internal fun compileScript(
             scriptFile: Path,
             scriptData: ByteArray,
             scriptFileSha256: String,

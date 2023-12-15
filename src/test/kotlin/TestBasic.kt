@@ -1,7 +1,6 @@
 import assertk.assertFailure
-import assertk.assertThat
 import assertk.assertions.hasClass
-import assertk.assertions.isFailure
+import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import kotlin.io.path.writeText
 

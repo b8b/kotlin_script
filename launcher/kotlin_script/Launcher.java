@@ -40,12 +40,12 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     private final Path localRepo;
 
     private final String kotlinVersion = "1.9.21";
-    private final String kotlinScriptVersion = kotlinVersion + ".21";
+    private final String kotlinScriptVersion = kotlinVersion + ".22";
     private final Path cacheDir;
 
     private final String[] dependencies = new String[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
-            "org/cikit/kotlin_script/1.9.21.21/kotlin_script-1.9.21.21.jar",
+            "org/cikit/kotlin_script/1.9.21.22/kotlin_script-1.9.21.22.jar",
             "com/github/ajalt/mordant/mordant-jvm/2.2.0/mordant-jvm-2.2.0.jar",
             "com/github/ajalt/colormath/colormath-jvm/3.3.1/colormath-jvm-3.3.1.jar",
             "org/jetbrains/markdown-jvm/0.5.2/markdown-jvm-0.5.2.jar",
@@ -57,7 +57,7 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
 
     private final byte[][] checksums = new byte[][] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
-            new byte[]{46, -76, -29, 89, -36, 102, 77, -99, -91, 111, -27, -93, 62, -112, 71, -104, 104, -96, -120, -46, 63, 6, 66, -88, -112, 114, -109, 10, -118, -114, -62, -40},
+            new byte[]{-119, 125, -12, -124, 125, -93, -45, 33, -83, 56, -109, 65, -60, -26, 112, 92, 36, 14, -100, -123, -32, 40, 122, 65, -73, -56, 43, 121, 61, 57, -13, -119},
             new byte[]{47, -91, -98, 91, -127, -81, -52, 113, -74, -85, 97, 40, -78, 118, 118, -1, -58, 17, -48, -93, -63, -126, -21, -64, -28, 55, -77, 102, 106, -75, 98, 1},
             new byte[]{38, 19, 40, 52, 21, -30, -31, 38, 97, 105, 125, -57, 41, 90, -38, -38, 15, 96, -20, 23, -20, -4, -81, 62, -15, -60, -18, 15, -37, 120, -119, 19},
             new byte[]{114, 100, -124, 71, 114, 96, -91, 82, -36, 124, 25, -80, -99, 70, 86, -60, -118, -29, -79, 13, -78, 114, 80, 0, -31, -126, -42, 21, -107, 41, -76, 110},
@@ -68,7 +68,7 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     };
     private final long[] sizes = new long[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_SIZES
-            63272L,
+            63319L,
             553121L,
             353666L,
             539307L,
