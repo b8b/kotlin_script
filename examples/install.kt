@@ -353,7 +353,10 @@ private object UpdateMainCommand : CliktCommand(
         val dependencies = kotlinCompilerDependencies.split(Regex("""\s+"""))
             .zip(kotlinCompilerClassPath.split(':'))
             .map { (spec, path) ->
-                parseDependency(spec).copy(sha256 = Path(path).sha256())
+                parseDependency(spec).copy(
+                    sha256 = Path(path).sha256(),
+                    size = Path(path).fileSize()
+                )
             }
 
         val kotlinStdlib = dependencies.first { d -> d.artifactId == "kotlin-stdlib" }
@@ -374,11 +377,11 @@ private object UpdateMainCommand : CliktCommand(
             }
             .replace(
                 Regex(
-                    """(kotlinStdlibDependency = Dependency)\((.*?),(.*?),(.*?),(\s*sha256 = ".*?")""",
+                    """(kotlinStdlibDependency = Dependency)\((.*?),(.*?),(.*?),(\s*sha256 = ".*?"),(\s*size = \w*)""",
                     setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL)
                 )
             ) { mr ->
-                val (prefix, g, a, v, sha256) = mr.destructured
+                val (prefix, g, a, v, sha256, size) = mr.destructured
                 buildString {
                     append(prefix)
                     append("(")
@@ -389,6 +392,8 @@ private object UpdateMainCommand : CliktCommand(
                     append(replaceKeepWs(v, "version = KOTLIN_VERSION"))
                     append(",")
                     append(replaceKeepWs(sha256, "sha256 = \"${kotlinStdlib.sha256}\""))
+                    append(",")
+                    append(replaceKeepWs(size, "size = ${kotlinStdlib.size}"))
                 }
             }
             .replace(
@@ -420,7 +425,11 @@ private object UpdateMainCommand : CliktCommand(
                                 append(indent)
                                 append("    sha256 = \"")
                                 append(d.sha256)
-                                append("\"\n")
+                                append("\",\n")
+                                append(indent)
+                                append("    size = ")
+                                append(d.size)
+                                append("\n")
                                 append(indent)
                                 append("),\n")
                                 append(indent)
@@ -443,7 +452,11 @@ private object UpdateMainCommand : CliktCommand(
                                 append(indent)
                                 append("    sha256 = \"")
                                 append(d.sha256)
-                                append("\"\n")
+                                append("\",\n")
+                                append(indent)
+                                append("    size = ")
+                                append(d.size)
+                                append("\n")
                                 append(indent)
                                 append("),\n")
                                 append(indent)

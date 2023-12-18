@@ -451,7 +451,8 @@ class KotlinScript(
             groupId = KOTLIN_GROUP_ID,
             artifactId = "kotlin-stdlib",
             version = KOTLIN_VERSION,
-            sha256 = "3b479313ab6caea4e5e25d3dee8ca80c302c89ba73e1af4dafaa100f6ef9296a"
+            sha256 = "3b479313ab6caea4e5e25d3dee8ca80c302c89ba73e1af4dafaa100f6ef9296a",
+            size = 1718945
         )
 
         private val compilerClassPath = listOf(
@@ -461,37 +462,43 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-compiler-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "46904b3d3f516560a48e0d93d9c7bfc63650b22d9f68f7a37eab5e5c5f3f785a"
+                sha256 = "46904b3d3f516560a48e0d93d9c7bfc63650b22d9f68f7a37eab5e5c5f3f785a",
+                size = 60150107
             ),
             Dependency(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-script-runtime",
                 version = KOTLIN_VERSION,
-                sha256 = "1b1c74d476ffa41985b0b95dbe78ea5052061889f8106f1ae6cb5ee17f323f19"
+                sha256 = "1b1c74d476ffa41985b0b95dbe78ea5052061889f8106f1ae6cb5ee17f323f19",
+                size = 43279
             ),
             Dependency(
                 groupId = "org.jetbrains.kotlin",
                 artifactId = "kotlin-reflect",
                 version = "1.6.10",
-                sha256 = "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203"
+                sha256 = "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203",
+                size = 3038560
             ),
             Dependency(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-daemon-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "01152ffb41b076e9c55083c513e1ef05f303cd5a95cedffcb89e124e340df11e"
+                sha256 = "01152ffb41b076e9c55083c513e1ef05f303cd5a95cedffcb89e124e340df11e",
+                size = 398746
             ),
             Dependency(
                 groupId = "org.jetbrains.intellij.deps",
                 artifactId = "trove4j",
                 version = "1.0.20200330",
-                sha256 = "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d"
+                sha256 = "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
+                size = 572985
             ),
             Dependency(
                 groupId = "org.jetbrains",
                 artifactId = "annotations",
                 version = "13.0",
-                sha256 = "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478"
+                sha256 = "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+                size = 17536
             ),
             // END_COMPILER_CLASS_PATH
         )

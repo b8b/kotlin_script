@@ -54,7 +54,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "9dbd38912d5246919275bdaaf30d6e991eb3ad46f675da8c610f51be7e2dd97e "*) ;;
+  "4b91daa5e8287db64c1c0f84b88ea8f4498dfba37dd73c0b7ddbce86e4ada107 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac

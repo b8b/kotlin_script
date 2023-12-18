@@ -19,6 +19,7 @@ data class Dependency(
     val classifier: String? = null,
     val type: String = "jar",
     val sha256: String? = null,
+    val size: Long? = null,
     val scope: Scope = Scope.Compile
 ) {
     fun toSpec(): String = "$groupId:$artifactId:$version" + when (classifier) {
