@@ -1,12 +1,12 @@
 plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
-    id("org.jetbrains.dokka") version "1.9.10"
+    id("org.jetbrains.dokka") version "1.9.20"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "1.9.21.22"
+version = "1.9.23.22"
 
 java {
     toolchain {

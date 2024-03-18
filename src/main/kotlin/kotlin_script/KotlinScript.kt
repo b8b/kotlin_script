@@ -442,7 +442,7 @@ class KotlinScript(
     }
 
     companion object {
-        private const val KOTLIN_VERSION = "1.9.21"
+        private const val KOTLIN_VERSION = "1.9.23"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
         private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.22"
@@ -451,8 +451,8 @@ class KotlinScript(
             groupId = KOTLIN_GROUP_ID,
             artifactId = "kotlin-stdlib",
             version = KOTLIN_VERSION,
-            sha256 = "3b479313ab6caea4e5e25d3dee8ca80c302c89ba73e1af4dafaa100f6ef9296a",
-            size = 1718945
+            sha256 = "8910cc238807d86ef550cb1f0b10dd5ed40b35a4ec1a52525f760aede84ead37",
+            size = 1718956
         )
 
         private val compilerClassPath = listOf(
@@ -462,15 +462,15 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-compiler-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "46904b3d3f516560a48e0d93d9c7bfc63650b22d9f68f7a37eab5e5c5f3f785a",
-                size = 60150107
+                sha256 = "cc94064974bf9ebf59945e31217cf2d16a0cebaaf2487eb0748fc1cbd1787943",
+                size = 60171055
             ),
             Dependency(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-script-runtime",
                 version = KOTLIN_VERSION,
-                sha256 = "1b1c74d476ffa41985b0b95dbe78ea5052061889f8106f1ae6cb5ee17f323f19",
-                size = 43279
+                sha256 = "75137e414a1a5b4b4d090f812d0e35eb30b4f0c923a53d69585456bb24fc1df8",
+                size = 43280
             ),
             Dependency(
                 groupId = "org.jetbrains.kotlin",
@@ -483,7 +483,7 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-daemon-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "01152ffb41b076e9c55083c513e1ef05f303cd5a95cedffcb89e124e340df11e",
+                sha256 = "6f3b661b98267ad24e2f8fb7ad5d06be7d2ed61a5d05c267f4e4caa78df783d9",
                 size = 398746
             ),
             Dependency(
