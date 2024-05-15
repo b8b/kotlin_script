@@ -1,18 +1,12 @@
 package kotlin_script
 
-import com.github.ajalt.mordant.animation.progressAnimation
-import com.github.ajalt.mordant.rendering.TextStyles
 import com.github.ajalt.mordant.terminal.Terminal
-import com.github.ajalt.mordant.widgets.Spinner
 import java.io.File
 import java.io.IOException
-import java.net.URL
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 import java.util.jar.Attributes
 import java.util.jar.Manifest
 import java.util.zip.ZipEntry
@@ -48,37 +42,17 @@ class KotlinScript(
         else -> supportedJavaVersions.last()
     }
 
-    private val terminal = if (progress) Terminal() else null
+    private val p = Progress(
+        t = if (progress) Terminal() else null,
+        trace = trace
+    )
 
-    private fun trace(vararg msg: String) {
-        if (trace) {
-            terminal?.let { t ->
-                t.print(TextStyles.bold.invoke("++"), stderr = true)
-                t.print(" ", stderr = true)
-                msg.forEachIndexed { index, arg ->
-                    val part = if (arg.startsWith("/")) {
-                        if (":" in arg) {
-                            val separator = TextStyles.bold.invoke(":")
-                            arg.split(":").joinToString(separator) {
-                                TextStyles.italic.invoke(it)
-                            }
-                        } else {
-                            TextStyles.italic.invoke(arg)
-                        }
-                    } else if (arg.startsWith("-")) {
-                        TextStyles.bold.invoke(arg)
-                    } else {
-                        arg
-                    }
-                    t.print(part, stderr = true)
-                    if (index < msg.size - 1) {
-                        t.print(" ", stderr = true)
-                    }
-                }
-                t.println(stderr = true)
-            } ?: System.err.println("++ ${msg.joinToString(" ")}")
-        }
-    }
+    private val resolver = Resolver(
+        mavenRepoUrl = mavenRepoUrl,
+        mavenRepoCache = mavenRepoCache,
+        localRepo = localRepo,
+        p = p
+    )
 
     private fun defaultDependencyVersion(d: Dependency): String {
         return when (d.groupId) {
@@ -87,119 +61,11 @@ class KotlinScript(
         }
     }
 
-    private fun copyFromRepoCache(dep: Dependency, tmp: Path): Boolean {
-        if (mavenRepoCache == null) {
-            return false
-        }
-        val source = mavenRepoCache / dep.subPath
-        if (!source.isReadable()) {
-            return false
-        }
-        val md = if (dep.sha256 != null) {
-            MessageDigest.getInstance("SHA-256")
-        } else {
-            null
-        }
-        try {
-            tmp.outputStream().use { out ->
-                source.inputStream().use { `in` ->
-                    val buffer = ByteArray(1024 * 4)
-                    while (true) {
-                        val n = `in`.read(buffer)
-                        if (n < 0) break
-                        md?.update(buffer, 0, n)
-                        out.write(buffer, 0, n)
-                    }
-                }
-            }
-        } catch (_: Exception) {
-            return false
-        }
-        if (md != null) {
-            val sha256 = md.digest().joinToString("") {
-                String.format("%02x", it)
-            }
-            return dep.sha256 == sha256
-        }
-        return true
-    }
-
-    private fun fetchFromRepo(dep: Dependency, tmp: Path) {
-        val md = if (dep.sha256 != null) {
-            MessageDigest.getInstance("SHA-256")
-        } else {
-            null
-        }
-        val progressAnimation = terminal?.progressAnimation {
-            spinner(Spinner.Lines())
-            percentage()
-            text("fetching dependencies")
-            progressBar()
-            timeRemaining()
-        }
-        try {
-            tmp.outputStream().use { out ->
-                val cn = URL("$mavenRepoUrl/${dep.subPath}").openConnection()
-                progressAnimation?.updateTotal(cn.contentLengthLong)
-                var totalWritten = 0L
-                cn.inputStream.use { `in` ->
-                    val buffer = ByteArray(1024 * 4)
-                    while (true) {
-                        val n = `in`.read(buffer)
-                        if (n < 0) break
-                        progressAnimation?.advance(n.toLong())
-                        md?.update(buffer, 0, n)
-                        out.write(buffer, 0, n)
-                        totalWritten += n
-                    }
-                }
-                if (totalWritten != cn.contentLengthLong) {
-                    error(
-                        "error fetching $dep: received $totalWritten Byte(s), " +
-                                "expected ${cn.contentLengthLong} Byte(s)"
-                    )
-                }
-            }
-        } finally {
-            progressAnimation?.clear()
-        }
-        if (md != null) {
-            val sha256 = md.digest().joinToString("") {
-                String.format("%02x", it)
-            }
-            if (dep.sha256 != sha256) {
-                error("unexpected sha256=$sha256 for $dep")
-            }
-        }
-    }
-
-    private fun resolveLib(dep: Dependency): Path {
-        val subPath = dep.subPath
-        val f = localRepo / subPath
-        if (f.exists()) return f
-        f.parent?.createDirectories()
-        val tmp = createTempFile(f.parent, "${f.name}~", "")
-        try {
-            if (copyFromRepoCache(dep, tmp)) {
-                trace("cp $mavenRepoCache/$subPath $mavenRepoUrl/$subPath")
-            } else {
-                trace("fetch $mavenRepoUrl/$subPath")
-                fetchFromRepo(dep, tmp)
-            }
-            tmp.moveTo(
-                f,
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
-            )
-        } finally {
-            tmp.deleteIfExists()
-        }
-        return f
-    }
-
-    private fun kotlinCompilerArgs(plugins: List<Path>): Array<String> {
-        val cp = compilerClassPath.joinToString(File.pathSeparator) { d ->
-            val f = resolveLib(d)
+    private fun kotlinCompilerArgs(
+        compilerDependencies: List<Path>,
+        compilerPlugins: List<Path>
+    ): Array<String> {
+        val cp = compilerDependencies.joinToString(File.pathSeparator) { f ->
             //TODO use correct quoting
             f.toAbsolutePath().toString()
         }
@@ -208,7 +74,7 @@ class KotlinScript(
             "-Djava.awt.headless=true",
             "-cp", cp,
             KOTLIN_COMPILER_MAIN,
-            *plugins.map { p ->
+            *compilerPlugins.map { p ->
                 "-Xplugin=${p.absolutePathString()}"
             }.toTypedArray(),
             "-jvm-target", kotlinJvmTarget,
@@ -263,24 +129,32 @@ class KotlinScript(
                 }
             })
         }
-        val compileClassPath = metaData.dep
-            .filter { d -> d.scope == Scope.Compile }
-            .map { d -> resolveLib(d).toAbsolutePath() }
-        // resolve runtime dependencies
-        metaData.dep
-            .filter { d -> d.scope == Scope.Runtime }
-            .forEach { d -> resolveLib(d) }
+
+        val compilerDependencies = mutableMapOf<Dependency, Path>()
+        val resolvedDependencies = mutableMapOf<Dependency, Path>()
+
         val targetFile = jarCachePath(metaData)
-        if (!force && targetFile.isReadable()) return metaData
+        if (!force && targetFile.isReadable()) {
+            // only need to fetch runtime dependencies
+            resolver.resolveLibs(
+                emptyList(),
+                metaData.dep
+                    .filterNot { d -> d.scope == Scope.Plugin }
+                    .map { d ->
+                        if (d.version.isBlank()) {
+                            d.copy(version = defaultDependencyVersion(d))
+                        } else {
+                            d
+                        }
+                    },
+                compilerDependencies,
+                resolvedDependencies
+            )
+            return metaData
+        }
 
         // copy script to temp dir
         val tmp = createTempDirectory(script.path.name)
-        val copyProgress = terminal?.let { t ->
-            t.progressAnimation {
-                spinner(Spinner.Lines())
-                text("initializing $tmp")
-            }
-        }
         Runtime.getRuntime().addShutdownHook(thread(start = false) {
             cleanup(tmp)
         })
@@ -295,99 +169,106 @@ class KotlinScript(
                 // -> src/main/kotlin/main.kt
                 val nameCount = script.path.nameCount
                 val scriptSubPath = script.path.subpath(
-                        nameCount - maxDepth - 2,
-                        nameCount)
+                    nameCount - maxDepth - 2,
+                    nameCount
+                )
                 scriptSubPath
             }
+
             else -> script.path.fileName
         }
         val scriptTmpPath = tmp / scriptTmpSubPath
         val scriptTmpParent = scriptTmpPath.parent
-        if (tmp != scriptTmpParent) {
-            scriptTmpParent.createDirectories()
-            copyProgress?.advance(1)
-        }
-        scriptTmpPath.outputStream().use { out ->
-            out.write(metaData.mainScript.data)
-            copyProgress?.advance(1)
-        }
-
-        // copy inc to temp dir
-        val incArgs = metaData.inc.map { inc ->
-            val tmpIncFile = scriptTmpParent / inc.path
-            val tmpIncParent = tmpIncFile.parent
-            if (tmp != tmpIncParent) {
-                tmpIncParent.createDirectories()
-                copyProgress?.advance(1)
+        val incArgs = p.withProgress("initializing $tmp") {
+            if (tmp != scriptTmpParent && !scriptTmpParent.exists()) {
+                scriptTmpParent.createDirectories()
             }
-            tmpIncFile.outputStream().use { out ->
-                out.write(inc.data)
-                copyProgress?.advance(1)
+            scriptTmpPath.outputStream().use { out ->
+                out.write(metaData.mainScript.data)
             }
-            inc.path.pathString
-        }
 
-        copyProgress?.clear()
+            // copy inc to temp dir
+            metaData.inc.map { inc ->
+                val tmpIncFile = scriptTmpParent / inc.path
+                val tmpIncParent = tmpIncFile.parent
+                if (tmp != tmpIncParent) {
+                    tmpIncParent.createDirectories()
+                }
+                tmpIncFile.outputStream().use { out ->
+                    out.write(inc.data)
+                }
+                inc.path.pathString
+            }
+        }
 
         // call compiler
-        val compileClassPathArgs = when {
-            compileClassPath.isEmpty() -> emptyList()
-            else -> listOf(
-                "-cp",
-                compileClassPath.joinToString(File.pathSeparator)
-            )
-        }
-        val plugins = metaData.dep.filter { d ->
-            d.scope == Scope.Plugin
-        }.map { d ->
-            val addVersion = if (d.version.isBlank()) {
-                d.copy(version = defaultDependencyVersion(d))
-            } else {
-                d
-            }
-            resolveLib(addVersion).toAbsolutePath()
-        }
         val (rc, compilerErrors) = if (scriptFileArgs.isNotEmpty()
                 || incArgs.isNotEmpty()) {
+            resolver.resolveLibs(
+                compilerClassPath,
+                metaData.dep.map { d ->
+                    if (d.version.isBlank()) {
+                        d.copy(version = defaultDependencyVersion(d))
+                    } else {
+                        d
+                    }
+                },
+                compilerDependencies,
+                resolvedDependencies
+            )
+            val kotlinCompilerArgs = kotlinCompilerArgs(
+                compilerDependencies.map { (_, f) -> f.toAbsolutePath() },
+                resolvedDependencies
+                    .filter { (d, _) -> d.scope == Scope.Plugin }
+                    .map { (_, f) -> f.toAbsolutePath() }
+            )
+            val compileClassPath = resolvedDependencies
+                .filter { (d, _) -> d.scope == Scope.Compile }
+                .map { (_, f) -> f.toAbsolutePath() }
+            val compileClassPathArgs = when {
+                compileClassPath.isEmpty() -> emptyList()
+                else -> listOf(
+                    "-cp",
+                    compileClassPath.joinToString(File.pathSeparator)
+                )
+            }
             val compilerArgs: List<String> = listOf(
-                *kotlinCompilerArgs(plugins),
+                *kotlinCompilerArgs,
                 *metaData.compilerArgs.toTypedArray(),
                 *compileClassPathArgs.toTypedArray(),
                 "-d", tmp.toAbsolutePath().toString(),
                 *scriptFileArgs.toTypedArray(),
                 *incArgs.toTypedArray()
             )
-            trace(*compilerArgs.toTypedArray())
-            val compilerProgress = terminal?.let { t ->
-                val animation = t.progressAnimation {
-                    spinner(Spinner.Lines())
-                    text("compiling ${(scriptFileArgs + incArgs).first()}")
-                }
-                animation.updateTotal(Long.MAX_VALUE)
-                animation
-            }
-            val compilerLog = scriptTmpParent / "kotlin_script.log"
-            try {
-                val compilerProcess = ProcessBuilder(
-                    *compilerArgs.toTypedArray()
-                )
+            p.trace(*compilerArgs.toTypedArray())
+            p.withProgress("compiling ${(scriptFileArgs + incArgs).first()}") {
+                val compilerLog = scriptTmpParent / "kotlin_script.log"
+                val compilerProcess = ProcessBuilder(compilerArgs)
                     .directory(scriptTmpParent.toFile())
                     .redirectErrorStream(true)
                     .redirectOutput(compilerLog.toFile())
                     .start()
                 compilerProcess.outputStream.close()
-                if (compilerProgress != null) {
-                    while (!compilerProcess.waitFor(400, TimeUnit.MILLISECONDS)) {
-                        compilerProgress.advance()
-                    }
-                }
                 val rc = compilerProcess.waitFor()
                 val compilerErrors = compilerLog.readText()
                 rc to compilerErrors
-            } finally {
-                compilerProgress?.clear()
             }
         } else {
+            // only need to fetch runtime dependencies
+            resolver.resolveLibs(
+                emptyList(),
+                metaData.dep
+                    .filterNot { d -> d.scope == Scope.Plugin }
+                    .map { d ->
+                        if (d.version.isBlank()) {
+                            d.copy(version = defaultDependencyVersion(d))
+                        } else {
+                            d
+                        }
+                    },
+                compilerDependencies,
+                resolvedDependencies
+            )
             0 to ""
         }
 
@@ -397,7 +278,7 @@ class KotlinScript(
         }
 
         // embed metadata into jar
-        trace("write", (tmp / "kotlin_script.metadata").absolutePathString())
+        p.trace("write", (tmp / "kotlin_script.metadata").absolutePathString())
         metaData.storeToFile(tmp / "kotlin_script.metadata")
         val manifestFile = tmp.resolve(MANIFEST_PATH)
         val manifest = when {
@@ -430,7 +311,7 @@ class KotlinScript(
         } catch (ex: java.nio.file.FileAlreadyExistsException) {
             targetFile.setPosixFilePermissions(permissions.value())
         }
-        trace("write", targetFile.absolutePathString())
+        p.trace("write", targetFile.absolutePathString())
         targetFile.outputStream().use { out ->
             ZipOutputStream(out).use { zout ->
                 zout.writeFileTree(tmp)
@@ -438,20 +319,22 @@ class KotlinScript(
             }
         }
 
+        cleanup(tmp)
+
         return metaData
     }
 
     companion object {
-        private const val KOTLIN_VERSION = "1.9.23"
+        private const val KOTLIN_VERSION = "1.9.24"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.22"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.23"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
             artifactId = "kotlin-stdlib",
             version = KOTLIN_VERSION,
-            sha256 = "8910cc238807d86ef550cb1f0b10dd5ed40b35a4ec1a52525f760aede84ead37",
+            sha256 = "858b902696da9cf585ab9d98ffc1c2712269828354dfe9107e3711b084a36468",
             size = 1718956
         )
 
@@ -462,15 +345,15 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-compiler-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "cc94064974bf9ebf59945e31217cf2d16a0cebaaf2487eb0748fc1cbd1787943",
-                size = 60171055
+                sha256 = "e71ff19e6b141ab85a9328fd010941531a302543026bd4244c95adc208d501f6",
+                size = 60181855
             ),
             Dependency(
                 groupId = KOTLIN_GROUP_ID,
-                artifactId = "kotlin-script-runtime",
+                artifactId = "kotlin-daemon-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "75137e414a1a5b4b4d090f812d0e35eb30b4f0c923a53d69585456bb24fc1df8",
-                size = 43280
+                sha256 = "177bc8b2a4076dcce7878ad0d8fd07163af3178e3fa90ee63d4f733bb47bfdc9",
+                size = 398746
             ),
             Dependency(
                 groupId = "org.jetbrains.kotlin",
@@ -481,17 +364,10 @@ class KotlinScript(
             ),
             Dependency(
                 groupId = KOTLIN_GROUP_ID,
-                artifactId = "kotlin-daemon-embeddable",
+                artifactId = "kotlin-script-runtime",
                 version = KOTLIN_VERSION,
-                sha256 = "6f3b661b98267ad24e2f8fb7ad5d06be7d2ed61a5d05c267f4e4caa78df783d9",
-                size = 398746
-            ),
-            Dependency(
-                groupId = "org.jetbrains.intellij.deps",
-                artifactId = "trove4j",
-                version = "1.0.20200330",
-                sha256 = "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
-                size = 572985
+                sha256 = "314c7d308fe750654365bac6144780613c9169cf3d9e1dafbab91cf80bdc357c",
+                size = 43279
             ),
             Dependency(
                 groupId = "org.jetbrains",
@@ -499,6 +375,13 @@ class KotlinScript(
                 version = "13.0",
                 sha256 = "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
                 size = 17536
+            ),
+            Dependency(
+                groupId = "org.jetbrains.intellij.deps",
+                artifactId = "trove4j",
+                version = "1.0.20200330",
+                sha256 = "c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d",
+                size = 572985
             ),
             // END_COMPILER_CLASS_PATH
         )
@@ -508,7 +391,7 @@ class KotlinScript(
 
         private val supportedJavaVersions = listOf(
             "1.8",
-            *(9 .. 21).map(Int::toString).toTypedArray()
+            *(9 .. 22).map(Int::toString).toTypedArray()
         )
 
         private const val KOTLIN_COMPILER_MAIN =
@@ -517,6 +400,9 @@ class KotlinScript(
         private const val MANIFEST_PATH = "META-INF/MANIFEST.MF"
 
         private fun cleanup(dir: Path) {
+            if (!dir.exists()) {
+                return
+            }
             try {
                 Files.walkFileTree(dir, object : SimpleFileVisitor<Path>() {
                     override fun postVisitDirectory(dir: Path, exc: IOException?) =

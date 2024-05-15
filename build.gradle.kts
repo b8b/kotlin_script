@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "1.9.23.22"
+version = "1.9.24.23"
 
 java {
     toolchain {
@@ -50,24 +50,29 @@ val examples by sourceSets
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("com.github.ajalt.mordant:mordant-jvm:2.2.0")
+    implementation("com.github.ajalt.mordant:mordant-jvm:2.+")
 
-    testImplementation("org.apache.bcel:bcel:6.7.0")
-    testImplementation("com.willowtreeapps.assertk:assertk-jvm:0.28.0")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testImplementation("org.apache.bcel:bcel:6.+")
+    testImplementation("com.willowtreeapps.assertk:assertk-jvm:latest.release")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.+")
 
     examplesImplementation(main.runtimeClasspath)
     examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-    examplesImplementation("org.apache.commons:commons-compress:1.25.0")
+    examplesImplementation("org.apache.commons:commons-compress:1.+")
     examplesImplementation("org.eclipse.jdt:ecj:3.33.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
-    examplesImplementation("org.apache.sshd:sshd-netty:2.9.0")
-    examplesImplementation("org.apache.sshd:sshd-git:2.9.0")
+    examplesImplementation("org.apache.sshd:sshd-netty:2.+")
+    examplesImplementation("org.apache.sshd:sshd-git:2.+")
     examplesImplementation("net.i2p.crypto:eddsa:0.3.0")
-    examplesImplementation("org.bouncycastle:bcpkix-jdk15on:1.70")
-    examplesImplementation("io.vertx:vertx-core:4.5.0")
-    examplesImplementation("com.fasterxml.jackson.core:jackson-databind:2.15.3")
-    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:4.2.1")
+    examplesImplementation("org.bouncycastle:bcpkix-jdk18on:1.+")
+    examplesImplementation("io.vertx:vertx-core:4.5.+")
+    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:4.+")
+    examplesImplementation("org.apache.james:apache-mime4j-core:latest.release")
+    examplesImplementation("de.erichseifert.vectorgraphics2d:VectorGraphics2D:0.+")
+}
+
+dependencyLocking {
+    lockAllConfigurations()
 }
 
 val kotlinSourcesJar by tasks
@@ -192,6 +197,11 @@ publishing {
             from(components["java"])
             artifact(kotlinSourcesJar)
             artifact(dokkaJar)
+            versionMapping {
+                usage("java-runtime") {
+                    fromResolutionResult()
+                }
+            }
             pom {
                 name = "kotlin_script"
                 description = "Lightweight build system for kotlin/jvm"
