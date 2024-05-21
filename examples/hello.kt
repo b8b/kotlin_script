@@ -10,28 +10,27 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.4.10.1
+v=2.0.0.23
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
-kotlin_script="${K2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
-if [ -e "$kotlin_script" ]; then
-  . "$kotlin_script"; exit 2
-fi
-fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
-fetch_cmd="$(command -v wget) --no-check-certificate -qO" || \
-fetch_cmd="curl -kfLSso"
-dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
-export K2_REPO="${K2_REPO:-https://repo1.maven.org/maven2}"
-kotlin_script="$(mktemp)" || exit 1
-if $fetch_cmd "$kotlin_script" "$K2_REPO"/"$p"; then
-  case "$(${dgst_cmd} < "$kotlin_script")" in
-  "d602c174f13855f8ec1bd14c50a3f7e5d29c7aa1e303e0aa4ea35186513849ea "*)
-    . "$kotlin_script"; rm -f "$kotlin_script"; exit 2 ;;
+url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
+kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+if ! [ -r "$kotlin_script_sh" ]; then
+  kotlin_script_sh="$(mktemp)" || exit 1
+  fetch_cmd="$(command -v curl) -kfLSso" || \
+    fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
+    fetch_cmd="wget --no-check-certificate -qO"
+  if ! $fetch_cmd "$kotlin_script_sh" "$url"; then
+    echo "failed to fetch kotlin_script.sh from $url" >&2
+    rm -f "$kotlin_script_sh"; exit 1
+  fi
+  dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
+  case "$($dgst_cmd < "$kotlin_script_sh")" in
+  "20a0f74bf37f919e68992b0d51806b44a9011c7a3d9637140dbdf7ff482178a8 "*) ;;
+  *) echo "error: failed to verify kotlin_script.sh" >&2
+     rm -f "$kotlin_script_sh"; exit 1;;
   esac
-  echo "error: failed to validate kotlin_script" >&2
-else
-  echo "error: failed to fetch kotlin_script" >&2
 fi
-rm -f "$kotlin_script"; exit 1
+. "$kotlin_script_sh"; exit 2
 */
 
 fun main() {
