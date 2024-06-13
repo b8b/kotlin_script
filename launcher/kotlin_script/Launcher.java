@@ -4,6 +4,7 @@ import javax.net.ssl.*;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
@@ -40,12 +41,12 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     private final Path localRepo;
 
     private final String kotlinVersion = "2.0.0";
-    private final String kotlinScriptVersion = kotlinVersion + ".23";
+    private final String kotlinScriptVersion = kotlinVersion + ".24";
     private final Path cacheDir;
 
     private final String[] dependencies = new String[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
-            "org/cikit/kotlin_script/2.0.0.23/kotlin_script-2.0.0.23.jar",
+            "org/cikit/kotlin_script/2.0.0.24/kotlin_script-2.0.0.24.jar",
             "com/github/ajalt/mordant/mordant-jvm/2.6.0/mordant-jvm-2.6.0.jar",
             "com/github/ajalt/colormath/colormath-jvm/3.5.0/colormath-jvm-3.5.0.jar",
             "org/jetbrains/markdown-jvm/0.7.0/markdown-jvm-0.7.0.jar",
@@ -57,7 +58,7 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
 
     private final byte[][] checksums = new byte[][] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
-            new byte[]{49, 62, -46, 76, -61, -61, -94, -126, -38, -41, 26, 1, -21, 53, 33, -91, -102, 108, 73, 88, -49, -15, -124, -113, -23, -54, -87, 87, -1, 114, 73, 38},
+            new byte[]{-36, -124, -92, -99, -83, 86, 42, -12, -109, -89, 119, 26, -89, 33, -113, -76, 124, 5, 92, -123, 21, 43, -40, 78, -72, 85, -33, -120, 96, 64, 8, 21},
             new byte[]{-115, 4, -11, 58, -91, 30, -74, -116, -39, -27, -90, -21, -115, -64, -102, -24, -103, -46, -111, -85, -20, -14, -126, 60, -11, -75, -116, -99, 38, -100, 50, 50},
             new byte[]{67, -109, 93, -80, 101, 88, -76, -86, -61, -35, -112, 10, 119, 91, -29, -24, -101, 84, -55, -12, -120, 96, 20, 87, -33, 39, -46, -95, 116, 49, 103, -80},
             new byte[]{-56, -76, 75, -29, 56, 89, -119, 18, -24, -69, -118, 73, -104, -80, 23, -33, 125, -47, -104, 21, 44, -50, -1, -17, 1, -49, 18, -118, -103, 0, 19, -98},
@@ -588,15 +589,15 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
                         "/kotlin_script-" + launcher.kotlinScriptVersion + ".sh");
         final URL launcherJarUrl = Launcher.class.getResource("/kotlin_script/Launcher.class");
         if (launcherJarUrl != null && launcherJarUrl.toString().startsWith("jar:file:")) {
-            final String launcherJarPath1 = launcherJarUrl.toString().substring(9);
-            final int i = launcherJarPath1.lastIndexOf('!');
-            final String launcherJarPath;
+            final String launcherJarFileUrl1 = launcherJarUrl.toString().substring(4);
+            final int i = launcherJarFileUrl1.lastIndexOf('!');
+            final String launcherJarFileUrl;
             if (i < 0) {
-                launcherJarPath = launcherJarPath1;
+                launcherJarFileUrl = launcherJarFileUrl1;
             } else {
-                launcherJarPath = launcherJarPath1.substring(0, i);
+                launcherJarFileUrl = launcherJarFileUrl1.substring(0, i);
             }
-            Path actualLauncherPath = Paths.get(launcherJarPath);
+            Path actualLauncherPath = Paths.get(URI.create(launcherJarFileUrl));
             if (!Files.exists(expectedLauncherPath) || !Files.isSameFile(expectedLauncherPath, actualLauncherPath)) {
                 final Path targetDir = expectedLauncherPath.getParent();
                 if (targetDir != null && !Files.isDirectory(targetDir)) {

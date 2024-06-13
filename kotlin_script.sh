@@ -33,6 +33,11 @@ case "$kotlin_script_sh" in
   exit 2
 esac
 
+if ! [ -e "$kotlin_script_sh" ]; then
+  echo "internal error: '$kotlin_script_sh': no such file" >&2
+  exit 2
+fi
+
 # running with temporary kotlin_script_sh
 trap 'rm -f "$kotlin_script_sh"' EXIT
 ${java_cmd:-java} -jar "$kotlin_script_sh" "$script_file" "$@"

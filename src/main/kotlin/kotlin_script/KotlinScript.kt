@@ -328,7 +328,7 @@ class KotlinScript(
         private const val KOTLIN_VERSION = "2.0.0"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.23"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.24"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
