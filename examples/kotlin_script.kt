@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.9.21.21
+v=2.0.0.24
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -25,7 +25,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "72fdbaf8238e40303a9115b2c3177c6717a928b60520ccdde7e42b265164f494 "*) ;;
+  "741c518ddcabd1fb488e8c47f706eb74f5c00e59425ed87eb5e41f4593b835f3 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
@@ -33,16 +33,23 @@ fi
 . "$kotlin_script_sh"; exit 2
 */
 
-///DEP=org.cikit:kotlin_script:1.9.21.21
-///DEP=com.github.ajalt.mordant:mordant-jvm:2.2.0
-///DEP=com.github.ajalt.colormath:colormath-jvm:3.3.1
-///DEP=org.jetbrains:markdown-jvm:0.5.2
-///DEP=it.unimi.dsi:fastutil-core:8.5.12
-///DEP=net.java.dev.jna:jna:5.13.0
+///DEP=org.cikit:kotlin_script:2.0.0.24
 
-///DEP=com.github.ajalt.clikt:clikt-jvm:4.2.1
+///DEP=com.github.ajalt.mordant:mordant-jvm:3.0.0
+///DEP=com.github.ajalt.mordant:mordant-core-jvm:3.0.0
+///DEP=com.github.ajalt.colormath:colormath-jvm:3.6.0
+///RDEP=com.github.ajalt.mordant:mordant-jvm-jna-jvm:3.0.0
+///RDEP=net.java.dev.jna:jna:5.14.0
+///RDEP=com.github.ajalt.mordant:mordant-jvm-ffm-jvm:3.0.0
+///RDEP=com.github.ajalt.mordant:mordant-jvm-graal-ffi-jvm:3.0.0
+
+///DEP=com.github.ajalt.clikt:clikt-jvm:5.0.1
+///DEP=com.github.ajalt.clikt:clikt-core-jvm:5.0.1
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.main
+import com.github.ajalt.clikt.core.theme
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.default
@@ -59,10 +66,12 @@ import kotlin.system.exitProcess
 
 private const val DEFAULT_MAVEN_REPO_URL = "https://repo1.maven.org"
 
-private object KotlinScriptCommand: CliktCommand(
-    name = "kotlin_script",
-    help = "kotlin_script command-line interface"
-) {
+private object KotlinScriptCommand: CliktCommand("kotlin_script") {
+
+    override fun help(context: Context): String {
+        return context.theme.info("kotlin_script command-line interface")
+    }
+
     private val mavenRepoUrl by option("-R", "--m2-central-repo",
         help = "url to public maven repository ($DEFAULT_MAVEN_REPO_URL)"
     ).default(System.getenv("M2_CENTRAL_REPO") ?: DEFAULT_MAVEN_REPO_URL)

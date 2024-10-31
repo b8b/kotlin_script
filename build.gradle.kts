@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "2.0.0.24"
+version = "2.0.21.25"
 
 java {
     toolchain {
@@ -50,14 +50,16 @@ val examples by sourceSets
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("com.github.ajalt.mordant:mordant-jvm:2.+")
+    implementation("com.github.ajalt.mordant:mordant-jvm:3.+") {
+        exclude(group = "com.github.ajalt.mordant", module = "mordant-jvm-graal-ffi-jvm")
+    }
 
     testImplementation("org.apache.bcel:bcel:6.+")
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:latest.release")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
 
     examplesImplementation(main.runtimeClasspath)
-    examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.+")
     examplesImplementation("org.apache.commons:commons-compress:1.+")
     examplesImplementation("org.eclipse.jdt:ecj:3.33.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
@@ -66,7 +68,7 @@ dependencies {
     examplesImplementation("net.i2p.crypto:eddsa:0.3.0")
     examplesImplementation("org.bouncycastle:bcpkix-jdk18on:1.+")
     examplesImplementation("io.vertx:vertx-core:4.5.+")
-    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:4.+")
+    examplesImplementation("com.github.ajalt.clikt:clikt-jvm:5.+")
     examplesImplementation("org.apache.james:apache-mime4j-core:latest.release")
     examplesImplementation("de.erichseifert.vectorgraphics2d:VectorGraphics2D:0.+")
 }

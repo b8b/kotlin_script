@@ -40,41 +40,44 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     private final Path localMirror;
     private final Path localRepo;
 
-    private final String kotlinVersion = "2.0.0";
-    private final String kotlinScriptVersion = kotlinVersion + ".24";
+    private final String kotlinVersion = "2.0.21";
+    private final String kotlinScriptVersion = kotlinVersion + ".25";
     private final Path cacheDir;
 
     private final String[] dependencies = new String[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
-            "org/cikit/kotlin_script/2.0.0.24/kotlin_script-2.0.0.24.jar",
-            "com/github/ajalt/mordant/mordant-jvm/2.6.0/mordant-jvm-2.6.0.jar",
-            "com/github/ajalt/colormath/colormath-jvm/3.5.0/colormath-jvm-3.5.0.jar",
-            "org/jetbrains/markdown-jvm/0.7.0/markdown-jvm-0.7.0.jar",
-            "org/jetbrains/kotlin/kotlin-stdlib/2.0.0/kotlin-stdlib-2.0.0.jar",
-            "it/unimi/dsi/fastutil-core/8.5.12/fastutil-core-8.5.12.jar",
+            "org/cikit/kotlin_script/2.0.21.25/kotlin_script-2.0.21.25.jar",
+            "com/github/ajalt/mordant/mordant-jvm/3.0.0/mordant-jvm-3.0.0.jar",
+            "com/github/ajalt/mordant/mordant-jvm-jna-jvm/3.0.0/mordant-jvm-jna-jvm-3.0.0.jar",
+            "com/github/ajalt/mordant/mordant-jvm-ffm-jvm/3.0.0/mordant-jvm-ffm-jvm-3.0.0.jar",
+            "com/github/ajalt/mordant/mordant-core-jvm/3.0.0/mordant-core-jvm-3.0.0.jar",
+            "com/github/ajalt/colormath/colormath-jvm/3.6.0/colormath-jvm-3.6.0.jar",
+            "org/jetbrains/kotlin/kotlin-stdlib/2.0.21/kotlin-stdlib-2.0.21.jar",
             "net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
             // END_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
     };
 
     private final byte[][] checksums = new byte[][] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
-            new byte[]{-36, -124, -92, -99, -83, 86, 42, -12, -109, -89, 119, 26, -89, 33, -113, -76, 124, 5, 92, -123, 21, 43, -40, 78, -72, 85, -33, -120, 96, 64, 8, 21},
-            new byte[]{-115, 4, -11, 58, -91, 30, -74, -116, -39, -27, -90, -21, -115, -64, -102, -24, -103, -46, -111, -85, -20, -14, -126, 60, -11, -75, -116, -99, 38, -100, 50, 50},
-            new byte[]{67, -109, 93, -80, 101, 88, -76, -86, -61, -35, -112, 10, 119, 91, -29, -24, -101, 84, -55, -12, -120, 96, 20, 87, -33, 39, -46, -95, 116, 49, 103, -80},
-            new byte[]{-56, -76, 75, -29, 56, 89, -119, 18, -24, -69, -118, 73, -104, -80, 23, -33, 125, -47, -104, 21, 44, -50, -1, -17, 1, -49, 18, -118, -103, 0, 19, -98},
-            new byte[]{36, 9, 56, -60, -86, -72, -25, 62, -120, -121, 3, -29, -25, -45, -8, 115, -125, -1, -27, -67, 83, 109, 109, 94, 60, 16, 13, 76, -48, 55, -97, -49},
-            new byte[]{-13, 28, 32, -11, -80, 99, 18, -13, -43, -32, 110, 97, 96, -93, 46, 39, 77, -127, -102, -90, -50, -65, 39, 82, -117, 38, -74, -75, -64, -63, -33, 25},
+            new byte[]{-47, -13, 11, 45, -73, 12, -100, 45, 72, -79, 27, 83, 101, 22, -127, 103, -4, -35, -74, -110, -106, 69, 50, -86, -50, 8, -18, 83, 52, 125, -114, 15},
+            new byte[]{-98, -45, -71, 118, -4, -52, -57, -115, -89, 70, -44, -104, 102, -6, -114, -69, -113, 16, 83, 10, -109, -59, 68, -22, 4, 32, 37, -102, 96, 125, -39, 94},
+            new byte[]{-27, -6, -29, 4, 113, 75, -116, 90, 43, -75, 45, -18, 119, -125, -58, 1, -79, -65, -10, -4, 32, 71, 56, -30, 126, -44, 48, -45, -123, -71, 109, -20},
+            new byte[]{15, -37, 96, 2, -83, -41, 39, -38, -21, -83, 25, 116, -33, -113, 55, -45, -116, 69, -89, 4, 69, -21, -28, -125, 80, 23, 58, -127, -79, -57, 35, 80},
+            new byte[]{-100, -7, -76, 109, 31, 73, -14, -42, -49, 38, 53, 70, 43, 41, -36, 89, -32, -62, -101, 31, -78, -16, -123, -77, 49, 40, -120, -69, -23, -57, -51, 49},
+            new byte[]{89, -9, 65, -83, -2, 98, 5, 48, 102, 120, 45, -117, 26, 69, -81, -48, 102, -123, -92, -68, 100, -77, 50, 119, -27, 72, 118, -71, -109, -19, -120, 92},
+            new byte[]{-13, 28, -59, 63, 16, 90, 126, 72, -64, -109, 104, 59, -67, 84, 55, 86, 29, 18, 51, -110, 5, 19, 119, 75, 71, 8, 5, 100, 27, -19, -68, 9},
             new byte[]{52, -19, 30, 31, 39, -6, -119, 107, -54, 80, -37, -60, -23, -100, -13, 115, 41, 103, -50, -61, -121, -89, -96, -43, -29, 72, 108, 9, 103, 63, -24, -58},
             // END_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
     };
     private final long[] sizes = new long[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_SIZES
-            73412L,
-            679295L,
-            370636L,
-            549818L,
-            1729731L,
-            6428331L,
+            73635L,
+            436L,
+            38300L,
+            228536L,
+            652597L,
+            352563L,
+            1747660L,
             1878533L,
             // END_KOTLIN_SCRIPT_DEPENDENCY_SIZES
     };
@@ -507,11 +510,28 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
 
     private Path executeCompiler() throws IOException, ClassNotFoundException,
             NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        final URL[] classPath = new URL[dependencies.length];
+        boolean skipJna = false;
+        try {
+            skipJna = System.getenv("KOTLIN_SCRIPT_JNA") == null && Integer.parseInt(javaVersion) >= 22;
+        } catch (NumberFormatException ex) {
+            // ignore
+        }
+
         progressTotal = 0L;
-        if (progress && !trace) {
-            for (int i = 0; i < dependencies.length; i++) {
-                final String relPath = dependencies[i];
+        int classPathSize = 0;
+        for (int i = 0; i < dependencies.length; i++) {
+            final String relPath = dependencies[i];
+            if (skipJna) {
+                if (relPath.contains("jna")) {
+                    continue;
+                }
+            } else {
+                if (relPath.contains("ffm")) {
+                    continue;
+                }
+            }
+            classPathSize++;
+            if (progress && !trace) {
                 final byte[] sha256 = checksums[i];
                 final long size = sizes[i];
                 final Path targetPath = localRepo.resolve(relPath);
@@ -526,16 +546,27 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
             progressThread.setDaemon(true);
             progressThread.start();
         }
+        final URL[] classPath = new URL[classPathSize];
+        classPathSize = 0;
         try {
             for (int i = 0; i < dependencies.length; i++) {
                 final String relPath = dependencies[i];
+                if (skipJna) {
+                    if (relPath.contains("jna")) {
+                        continue;
+                    }
+                } else {
+                    if (relPath.contains("ffm")) {
+                        continue;
+                    }
+                }
                 final byte[] sha256 = checksums[i];
                 final long size = sizes[i];
                 final Path targetPath = localRepo.resolve(relPath);
                 if (!Files.isReadable(targetPath)) {
                     fetch(relPath, targetPath, sha256, size, false);
                 }
-                classPath[i] = targetPath.toUri().toURL();
+                classPath[classPathSize++] = targetPath.toUri().toURL();
             }
         } finally {
             if (progressTotal > 0L) {

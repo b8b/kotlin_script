@@ -317,18 +317,21 @@ fun reportCoverage() {
                 continue
             }
         }
-        (baseDir / "${fileName}.cov").writer().use { w ->
-            lines.forEachIndexed { index, line ->
-                val ln = fileName to index.inc()
-                if (linesCovered.contains(ln) ||
-                    line.isBlank() ||
-                    line.trimStart().startsWith("#")) {
-                    w.write("   ")
-                } else {
-                    w.write("!  ")
+        if (!Path(fileName).isAbsolute) {
+            (baseDir / "${fileName}.cov").writer().use { w ->
+                lines.forEachIndexed { index, line ->
+                    val ln = fileName to index.inc()
+                    if (linesCovered.contains(ln) ||
+                        line.isBlank() ||
+                        line.trimStart().startsWith("#")
+                    ) {
+                        w.write("   ")
+                    } else {
+                        w.write("!  ")
+                    }
+                    w.write(line)
+                    w.write("\n")
                 }
-                w.write(line)
-                w.write("\n")
             }
         }
     }
