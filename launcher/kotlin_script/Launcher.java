@@ -40,44 +40,44 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     private final Path localMirror;
     private final Path localRepo;
 
-    private final String kotlinVersion = "2.0.21";
-    private final String kotlinScriptVersion = kotlinVersion + ".25";
+    private final String kotlinVersion = "2.1.0";
+    private final String kotlinScriptVersion = kotlinVersion + ".26";
     private final Path cacheDir;
 
     private final String[] dependencies = new String[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
-            "org/cikit/kotlin_script/2.0.21.25/kotlin_script-2.0.21.25.jar",
-            "com/github/ajalt/mordant/mordant-jvm/3.0.0/mordant-jvm-3.0.0.jar",
-            "com/github/ajalt/mordant/mordant-jvm-jna-jvm/3.0.0/mordant-jvm-jna-jvm-3.0.0.jar",
-            "com/github/ajalt/mordant/mordant-jvm-ffm-jvm/3.0.0/mordant-jvm-ffm-jvm-3.0.0.jar",
-            "com/github/ajalt/mordant/mordant-core-jvm/3.0.0/mordant-core-jvm-3.0.0.jar",
+            "org/cikit/kotlin_script/2.1.0.26/kotlin_script-2.1.0.26.jar",
+            "com/github/ajalt/mordant/mordant-jvm/3.0.1/mordant-jvm-3.0.1.jar",
+            "com/github/ajalt/mordant/mordant-jvm-jna-jvm/3.0.1/mordant-jvm-jna-jvm-3.0.1.jar",
+            "com/github/ajalt/mordant/mordant-jvm-ffm-jvm/3.0.1/mordant-jvm-ffm-jvm-3.0.1.jar",
+            "com/github/ajalt/mordant/mordant-core-jvm/3.0.1/mordant-core-jvm-3.0.1.jar",
             "com/github/ajalt/colormath/colormath-jvm/3.6.0/colormath-jvm-3.6.0.jar",
-            "org/jetbrains/kotlin/kotlin-stdlib/2.0.21/kotlin-stdlib-2.0.21.jar",
+            "org/jetbrains/kotlin/kotlin-stdlib/2.1.0/kotlin-stdlib-2.1.0.jar",
             "net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
             // END_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
     };
 
     private final byte[][] checksums = new byte[][] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
-            new byte[]{-47, -13, 11, 45, -73, 12, -100, 45, 72, -79, 27, 83, 101, 22, -127, 103, -4, -35, -74, -110, -106, 69, 50, -86, -50, 8, -18, 83, 52, 125, -114, 15},
+            new byte[]{-5, 35, -70, -76, 80, -11, 92, -87, -118, -5, 95, 91, -96, 88, -123, -105, -35, 51, -74, -41, -75, 5, 123, -63, -33, 104, -7, -15, -71, 20, 25, 36},
             new byte[]{-98, -45, -71, 118, -4, -52, -57, -115, -89, 70, -44, -104, 102, -6, -114, -69, -113, 16, 83, 10, -109, -59, 68, -22, 4, 32, 37, -102, 96, 125, -39, 94},
-            new byte[]{-27, -6, -29, 4, 113, 75, -116, 90, 43, -75, 45, -18, 119, -125, -58, 1, -79, -65, -10, -4, 32, 71, 56, -30, 126, -44, 48, -45, -123, -71, 109, -20},
-            new byte[]{15, -37, 96, 2, -83, -41, 39, -38, -21, -83, 25, 116, -33, -113, 55, -45, -116, 69, -89, 4, 69, -21, -28, -125, 80, 23, 58, -127, -79, -57, 35, 80},
+            new byte[]{65, 6, 52, 66, -56, -119, 27, 39, 116, 83, 106, -101, -121, -91, 6, 42, 127, -46, 14, 111, 25, 73, -105, 76, 109, -89, 47, 73, 71, 45, 111, 77},
+            new byte[]{32, 65, -62, -11, -9, -72, 112, -107, -79, 21, -53, 25, 21, 94, -23, 37, 116, 81, -123, 77, 8, -27, -72, 103, 17, 101, -76, 59, -57, -31, 20, -49},
             new byte[]{-100, -7, -76, 109, 31, 73, -14, -42, -49, 38, 53, 70, 43, 41, -36, 89, -32, -62, -101, 31, -78, -16, -123, -77, 49, 40, -120, -69, -23, -57, -51, 49},
             new byte[]{89, -9, 65, -83, -2, 98, 5, 48, 102, 120, 45, -117, 26, 69, -81, -48, 102, -123, -92, -68, 100, -77, 50, 119, -27, 72, 118, -71, -109, -19, -120, 92},
-            new byte[]{-13, 28, -59, 63, 16, 90, 126, 72, -64, -109, 104, 59, -67, 84, 55, 86, 29, 18, 51, -110, 5, 19, 119, 75, 71, 8, 5, 100, 27, -19, -68, 9},
+            new byte[]{-42, -7, 27, 123, 15, 48, 108, -54, 41, -97, -20, 116, -5, 124, 52, -28, -121, 77, 111, 94, -59, -71, 37, -96, -76, -34, 33, -112, 30, 17, -100, 63},
             new byte[]{52, -19, 30, 31, 39, -6, -119, 107, -54, 80, -37, -60, -23, -100, -13, 115, 41, 103, -50, -61, -121, -89, -96, -43, -29, 72, 108, 9, 103, 63, -24, -58},
             // END_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
     };
     private final long[] sizes = new long[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_SIZES
-            73635L,
+            73612L,
             436L,
-            38300L,
-            228536L,
+            38316L,
+            229120L,
             652597L,
             352563L,
-            1747660L,
+            1690048L,
             1878533L,
             // END_KOTLIN_SCRIPT_DEPENDENCY_SIZES
     };

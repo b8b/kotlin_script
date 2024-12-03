@@ -1,7 +1,6 @@
 package kotlin_script
 
 import com.github.ajalt.mordant.animation.progress.*
-import com.github.ajalt.mordant.rendering.TextAlign
 import com.github.ajalt.mordant.rendering.TextStyles
 import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.widgets.Spinner
