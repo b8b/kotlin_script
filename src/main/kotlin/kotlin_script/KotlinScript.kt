@@ -43,8 +43,9 @@ class KotlinScript(
     }
 
     private val p = Progress(
-        t = if (progress) Terminal() else null,
-        trace = trace
+        t = Terminal(),
+        trace = trace,
+        stdErrIsTerm = progress
     )
 
     private val resolver = Resolver(
@@ -73,7 +74,7 @@ class KotlinScript(
             (javaHome / "bin" / "java").absolutePathString(),
             "-Djava.awt.headless=true",
             "-cp", cp,
-            KOTLIN_COMPILER_MAIN,
+            KOTLIN_JVM_COMPILER_MAIN,
             *compilerPlugins.map { p ->
                 "-Xplugin=${p.absolutePathString()}"
             }.toTypedArray(),
@@ -308,7 +309,7 @@ class KotlinScript(
         try {
             Files.createFile(targetFile, permissions)
         } catch (_: UnsupportedOperationException) {
-        } catch (ex: java.nio.file.FileAlreadyExistsException) {
+        } catch (_: java.nio.file.FileAlreadyExistsException) {
             targetFile.setPosixFilePermissions(permissions.value())
         }
         p.trace("write", targetFile.absolutePathString())
@@ -325,17 +326,17 @@ class KotlinScript(
     }
 
     companion object {
-        private const val KOTLIN_VERSION = "2.1.0"
+        private const val KOTLIN_VERSION = "2.1.20"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.26"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.27"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
             artifactId = "kotlin-stdlib",
             version = KOTLIN_VERSION,
-            sha256 = "d6f91b7b0f306cca299fec74fb7c34e4874d6f5ec5b925a0b4de21901e119c3f",
-            size = 1690048
+            sha256 = "1bcc74e8ce84e2c25eaafde10f1248349cce3062b6e36978cbeec610db1e930a",
+            size = 1724057
         )
 
         private val compilerClassPath = listOf(
@@ -345,8 +346,8 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-compiler-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783",
-                size = 58801389
+                sha256 = "c54a00718c8c0e3ee858bf42771c7f401c5e3c1738861e18e9536371042fa1b3",
+                size = 56909275
             ),
             Dependency(
                 groupId = "org.jetbrains.kotlin",
@@ -365,9 +366,16 @@ class KotlinScript(
             Dependency(
                 groupId = "org.jetbrains.kotlinx",
                 artifactId = "kotlinx-coroutines-core-jvm",
-                version = "1.6.4",
-                sha256 = "c24c8bb27bb320c4a93871501a7e5e0c61607638907b197aef675513d4c820be",
-                size = 1476653
+                version = "1.8.0",
+                sha256 = "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5",
+                size = 1548360
+            ),
+            Dependency(
+                groupId = KOTLIN_GROUP_ID,
+                artifactId = "kotlin-daemon-embeddable",
+                version = KOTLIN_VERSION,
+                sha256 = "d9e83df1d847a201ba3c016a786ced091be9503997d09f6a9cf1796ee489f374",
+                size = 345429
             ),
             Dependency(
                 groupId = "org.jetbrains.intellij.deps",
@@ -380,15 +388,8 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-script-runtime",
                 version = KOTLIN_VERSION,
-                sha256 = "15a2b82119e9f145ea028029bd31166584648a419157c20948c124fa33d40e50",
-                size = 43363
-            ),
-            Dependency(
-                groupId = KOTLIN_GROUP_ID,
-                artifactId = "kotlin-daemon-embeddable",
-                version = KOTLIN_VERSION,
-                sha256 = "6aa581bd53c3500e380e4bb6b2407f6d233910012f425349c2ed5a8ddbe29eac",
-                size = 346166
+                sha256 = "ae4397fbb3aa2a1ada09290e753bba99a4114548977c3115526b9958f4cb1a04",
+                size = 43365
             ),
             // END_COMPILER_CLASS_PATH
         )
@@ -401,7 +402,10 @@ class KotlinScript(
             *(9 .. 22).map(Int::toString).toTypedArray()
         )
 
-        private const val KOTLIN_COMPILER_MAIN =
+        private const val KOTLIN_JS_COMPILER_MAIN =
+            "org.jetbrains.kotlin.cli.js.K2JSCompiler"
+
+        private const val KOTLIN_JVM_COMPILER_MAIN =
                 "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
 
         private const val MANIFEST_PATH = "META-INF/MANIFEST.MF"

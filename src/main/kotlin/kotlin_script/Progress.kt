@@ -8,7 +8,8 @@ import com.github.ajalt.mordant.widgets.progress.*
 
 internal class Progress(
     private val t: Terminal? = null,
-    private val trace: Boolean = false
+    private val trace: Boolean = false,
+    private val stdErrIsTerm: Boolean = false,
 ) {
     private val spinner = Spinner.Lines()
 
@@ -16,7 +17,7 @@ internal class Progress(
         if (!trace) {
             return
         }
-        if (t == null) {
+        if (t == null || !stdErrIsTerm) {
             System.err.println("++ ${msg.joinToString(" ")}")
             return
         }
@@ -54,7 +55,7 @@ internal class Progress(
         total: Long = 1L,
         block: (ProgressTask<Unit>?) -> T
     ): T {
-        if (t == null) {
+        if (t == null || !t.terminalInfo.outputInteractive) {
             return block(null)
         }
         val layout = progressBarLayout(alignColumns = false) {

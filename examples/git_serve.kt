@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.6.0.0
+v=1.9.24.23
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -25,13 +25,14 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "c7710288e71855c0ae05004fae38be70f7368f0432f6d660530205026e9bbfbd "*) ;;
+  "1ec108162377126bc9796f38dd83ab1d653dfcb866e364107db923b577633452 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
 fi
 . "$kotlin_script_sh"; exit 2
 */
+
 
 ///DEP=org.apache.sshd:sshd-netty:2.8.0
 
@@ -70,13 +71,13 @@ import org.apache.sshd.common.util.threads.SshThreadPoolExecutor
 import org.apache.sshd.git.GitLocationResolver
 import org.apache.sshd.git.pack.GitPackCommand
 import org.apache.sshd.server.SshServer
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.security.KeyPairGenerator
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
-
-import net.i2p.crypto.eddsa.KeyPairGenerator as I2KeyPairGenerator
 
 fun main() {
     //System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug")
@@ -92,7 +93,9 @@ fun main() {
             FilePasswordProvider.of(password)
         )
     } else {
-        val kp = I2KeyPairGenerator().generateKeyPair()
+        val kp = KeyPairGenerator
+            .getInstance("Ed25519", BouncyCastleProvider())
+            .generateKeyPair()
         val options = OpenSSHKeyEncryptionContext()
         options.password = "changeit"
         options.cipherName = "aes"

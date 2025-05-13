@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "2.1.0.26"
+version = "2.1.20.27"
 
 java {
     toolchain {
@@ -53,10 +53,12 @@ dependencies {
     implementation("com.github.ajalt.mordant:mordant-jvm:3.+") {
         exclude(group = "com.github.ajalt.mordant", module = "mordant-jvm-graal-ffi-jvm")
     }
+    runtimeOnly("net.java.dev.jna:jna:5.15.0")
 
     testImplementation("org.apache.bcel:bcel:6.+")
     testImplementation("com.willowtreeapps.assertk:assertk-jvm:latest.release")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.+")
 
     examplesImplementation(main.runtimeClasspath)
     examplesImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.+")
@@ -65,12 +67,12 @@ dependencies {
     examplesImplementation("com.pi4j:pi4j-core:1.2")
     examplesImplementation("org.apache.sshd:sshd-netty:2.+")
     examplesImplementation("org.apache.sshd:sshd-git:2.+")
-    examplesImplementation("net.i2p.crypto:eddsa:0.3.0")
     examplesImplementation("org.bouncycastle:bcpkix-jdk18on:1.+")
     examplesImplementation("io.vertx:vertx-core:4.5.+")
     examplesImplementation("com.github.ajalt.clikt:clikt-jvm:5.+")
     examplesImplementation("org.apache.james:apache-mime4j-core:latest.release")
     examplesImplementation("de.erichseifert.vectorgraphics2d:VectorGraphics2D:0.+")
+    examplesImplementation("com.ashampoo:kim:0.+")
 }
 
 dependencyLocking {
@@ -79,7 +81,7 @@ dependencyLocking {
 
 val kotlinSourcesJar by tasks
 
-val dokkaJar by tasks.creating(Jar::class) {
+val dokkaJar by tasks.registering(Jar::class) {
     group = JavaBasePlugin.DOCUMENTATION_GROUP
     description = "Assembles Kotlin docs with Dokka"
     archiveClassifier.set("javadoc")
@@ -107,7 +109,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
-tasks.create<JavaExec>("updateMainSources") {
+tasks.register<JavaExec>("updateMainSources") {
     group = "Execution"
     description = "update sources with dependency information"
     classpath = examples.runtimeClasspath
@@ -139,7 +141,7 @@ tasks.create<JavaExec>("updateMainSources") {
     )
 }
 
-tasks.create<JavaExec>("updateLauncherSources") {
+tasks.register<JavaExec>("updateLauncherSources") {
     group = "Execution"
     description = "update sources with dependency information"
     classpath = examples.runtimeClasspath
@@ -175,7 +177,7 @@ tasks.create<JavaExec>("updateLauncherSources") {
     )
 }
 
-tasks.create<JavaExec>("installMainJar") {
+tasks.register<JavaExec>("installMainJar") {
     dependsOn(mainJar, dokkaJar, kotlinSourcesJar)
     group = "Execution"
     description = "install kotlin_script to local repository"
