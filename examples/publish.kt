@@ -1,7 +1,7 @@
 #!/bin/sh
 
-/*__kotlin_script_installer__/ 2>/dev/null
-#
+/*/ __kotlin_script_installer__ 2>&-
+# vim: syntax=kotlin
 #    _         _   _ _                       _       _
 #   | |       | | | (_)                     (_)     | |
 #   | | _____ | |_| |_ _ __    ___  ___ _ __ _ _ __ | |_
@@ -10,83 +10,75 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.3.30.0
-artifact=org/cikit/kotlin_script/kotlin_script/"$v"/kotlin_script-"$v".sh
-if ! [ -e "${local_repo:=$HOME/.m2/repository}"/"$artifact" ]; then
-  fetch_s="$(command -v fetch) -aAqo" || fetch_s="$(command -v curl) -fSso"
-  mkdir -p "$local_repo"/org/cikit/kotlin_script/kotlin_script/"$v"
-  tmp_f="$(mktemp "$local_repo"/"$artifact"~XXXXXXXXXXXXXXXX)" || exit 1
-  if ! ${fetch_cmd:="$fetch_s"} "$tmp_f" \
-      "${repo:=https://repo1.maven.org/maven2}"/"$artifact"; then
-    echo "error: failed to fetch kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1
+v=2.2.0.28
+p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
+url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
+kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
+if ! [ -r "$kotlin_script_sh" ]; then
+  kotlin_script_sh="$(mktemp)" || exit 1
+  fetch_cmd="$(command -v curl) -kfLSso" || \
+    fetch_cmd="$(command -v fetch) --no-verify-peer -aAqo" || \
+    fetch_cmd="wget --no-check-certificate -qO"
+  if ! $fetch_cmd "$kotlin_script_sh" "$url"; then
+    echo "failed to fetch kotlin_script.sh from $url" >&2
+    rm -f "$kotlin_script_sh"; exit 1
   fi
-  case "$(openssl dgst -sha256 -r < "$tmp_f")" in
-  "ae510b3afffdf06c536d78730b0d4e29f161db0bf4c9e866f415747ae0294f28 "*)
-    mv -f "$tmp_f" "$local_repo"/"$artifact" ;;
-  *)
-    echo "error: failed to validate kotlin_script" >&2
-    rm -f "$tmp_f"; exit 1 ;;
+  dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
+  case "$($dgst_cmd < "$kotlin_script_sh")" in
+  "2c927f37e5c2de35b0e9d3d898d957958b27ca62b07bd2da6b009ccfbe9c0631 "*) ;;
+  *) echo "error: failed to verify kotlin_script.sh" >&2
+     rm -f "$kotlin_script_sh"; exit 1;;
   esac
 fi
-. "$local_repo"/"$artifact"
-exit 2
+. "$kotlin_script_sh"; exit 2
 */
 
-///MAIN=PublishKt
-
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileWriter
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.file.Files
-import java.nio.file.Paths
+import java.nio.file.Path
 import java.security.MessageDigest
-import java.util.*
-import java.util.zip.ZipFile
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import kotlin.io.path.*
 
-private data class Item(val src: File, val targetName: String = src.name) {
+private data class Item(val src: Path, val targetName: String = src.name) {
     constructor(
-            src: String,
-            targetName: String = File(src).name
-    ) : this(File(src), targetName)
+        src: String,
+        targetName: String = Path(src).name
+    ) : this(Path(src), targetName)
 
-    private fun digest(tgt: File, alg: String) {
-        if (tgt.exists() && tgt.lastModified() > src.lastModified()) return
-        val hex = FileInputStream(src).use { `in` ->
+    private fun digest(tgt: Path, alg: String) {
+        if (tgt.exists() &&
+            tgt.getLastModifiedTime() > src.getLastModifiedTime()) return
+        val hex = src.inputStream().use { `in` ->
             val md = MessageDigest.getInstance(alg)
             md.update(`in`.readBytes())
             md.digest().joinToString("") {
                 String.format("%02x", it)
             }
         }
-        FileWriter(tgt).use { w ->
-            w.write(hex)
-            w.write("\n")
-        }
+        tgt.writeText("$hex\n")
     }
 
-    private fun sign(tgt: File) {
-        if (tgt.exists() && tgt.lastModified() > src.lastModified()) return
+    private fun sign(tgt: Path) {
+        if (tgt.exists() &&
+            tgt.getLastModifiedTime() > src.getLastModifiedTime()) return
         try {
-            Files.delete(tgt.toPath())
+            tgt.deleteIfExists()
         } catch (_: java.nio.file.NoSuchFileException) {
         }
         val rc = ProcessBuilder()
-                .command("gpg", "--detach-sign", "--armor", src.path)
+                .command("gpg", "--detach-sign", "--armor", src.pathString)
                 .inheritIO()
                 .start()
                 .waitFor()
         if (rc != 0) error("gpg2 terminated with exit code $rc")
     }
 
-    fun upload(to: String, base64Credentials: String) {
-        val md5 = File("${src.path}.md5")
+    fun addToZip(zip: ZipOutputStream, tox: String) {
+        val md5 = Path("${src.pathString}.md5")
         digest(md5, "MD5")
-        val sha1 = File("${src.path}.sha1")
+        val sha1 = Path("${src.pathString}.sha1")
         digest(sha1, "SHA-1")
-        val asc = File("${src.path}.asc")
+        val asc = Path("${src.pathString}.asc")
         sign(asc)
         for (f in listOf(
                 src to targetName,
@@ -94,23 +86,15 @@ private data class Item(val src: File, val targetName: String = src.name) {
                 sha1 to "$targetName.sha1",
                 asc to "$targetName.asc"
         )) {
-            val url = URL("$to/${f.second}")
-            println("PUT $url")
-            val cn = url.openConnection() as HttpURLConnection
-            cn.requestMethod = "PUT"
-            cn.doOutput = true
-            cn.addRequestProperty("Authorization", "Basic $base64Credentials")
-            cn.outputStream.use { out ->
-                FileInputStream(f.first).use { `in` ->
-                    `in`.copyTo(out)
-                }
+            val name = "$tox/${f.second}"
+            println("ADD $name")
+            val e = ZipEntry(name)
+            e.size = f.first.fileSize()
+            zip.putNextEntry(e)
+            f.first.inputStream().use { `in` ->
+                `in`.copyTo(zip)
             }
-            val responseBody = cn.inputStream.use { it.readBytes() }
-            if (!cn.responseCode.toString().startsWith("2")) {
-                error("failed with status ${cn.responseCode} " +
-                        "${cn.responseMessage}\n" +
-                        responseBody.toString(Charsets.UTF_8))
-            }
+            zip.closeEntry()
         }
     }
 }
@@ -118,16 +102,11 @@ private data class Item(val src: File, val targetName: String = src.name) {
 fun main(args: Array<String>) {
     val v = args.singleOrNull()?.removePrefix("-v")
             ?: error("usage: publish.kt -v<version>")
-    val user = System.console().readLine("Username: ")
-    val pass = System.console().readPassword("Password: ")
-    val base64Credentials = Base64.getUrlEncoder().encodeToString(
-            "$user:${String(pass)}".toByteArray()
-    )
 
-    val repo = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
     val subDir = "org/cikit/kotlin_script/$v"
 
-    val libDir = Paths.get(System.getProperty("user.home"), ".m2", "repository", subDir)
+    val libDir = Path(System.getProperty("user.home")) /
+            ".m2" / "repository" / subDir
     val filesToPublish = listOf(
         Item("$libDir/kotlin_script-$v.pom"),
         Item("$libDir/kotlin_script-$v.sh"),
@@ -136,7 +115,9 @@ fun main(args: Array<String>) {
         Item("$libDir/kotlin_script-$v-javadoc.jar")
     )
 
-    for (item in filesToPublish) {
-        item.upload("$repo/$subDir", base64Credentials)
+    ZipOutputStream(Path("publish.zip").outputStream()).use { zip ->
+        for (item in filesToPublish) {
+            item.addToZip(zip, subDir)
+        }
     }
 }
