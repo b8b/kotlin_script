@@ -1,12 +1,11 @@
 plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
-    id("org.jetbrains.dokka") version "1.9.20"
     `maven-publish`
 }
 
 group = "org.cikit"
-version = "2.1.20.27"
+version = "2.2.0.28"
 
 java {
     toolchain {
@@ -83,9 +82,8 @@ val kotlinSourcesJar by tasks
 
 val dokkaJar by tasks.registering(Jar::class) {
     group = JavaBasePlugin.DOCUMENTATION_GROUP
-    description = "Assembles Kotlin docs with Dokka"
+    description = "Assembles fake Kotlin docs"
     archiveClassifier.set("javadoc")
-    from(tasks["dokkaJavadoc"])
 }
 
 val mainJar by tasks.named<Jar>("jar")
