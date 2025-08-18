@@ -326,17 +326,17 @@ class KotlinScript(
     }
 
     companion object {
-        private const val KOTLIN_VERSION = "2.2.0"
+        private const val KOTLIN_VERSION = "2.2.10"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.28"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.29"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
             artifactId = "kotlin-stdlib",
             version = KOTLIN_VERSION,
-            sha256 = "65d12d85a3b865c160db9147851712a64b10dadd68b22eea22a95bf8a8670dca",
-            size = 1750373
+            sha256 = "9c67cc79efd6b9215b49d2a4308f5f3433537376c7c88e89bdd6729bd096e61a",
+            size = 1750374
         )
 
         private val compilerClassPath = listOf(
@@ -346,8 +346,8 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-compiler-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "b2f743ea5ba12f69e0f35e5d8d46069d74c8e2861087548a7e0e14a784bc4cf1",
-                size = 56255947
+                sha256 = "79628fd5d64b4692a62f98962baab00e9076a37e2cffd6ace33cd0b7be7d1cdf",
+                size = 56259401
             ),
             Dependency(
                 groupId = "org.jetbrains.kotlin",
@@ -364,6 +364,13 @@ class KotlinScript(
                 size = 17536
             ),
             Dependency(
+                groupId = KOTLIN_GROUP_ID,
+                artifactId = "kotlin-daemon-embeddable",
+                version = KOTLIN_VERSION,
+                sha256 = "b31573d418961fa080760fedcfc90d68ad67a85eafa245c73fe3d551476777ba",
+                size = 345724
+            ),
+            Dependency(
                 groupId = "org.jetbrains.kotlinx",
                 artifactId = "kotlinx-coroutines-core-jvm",
                 version = "1.8.0",
@@ -372,16 +379,9 @@ class KotlinScript(
             ),
             Dependency(
                 groupId = KOTLIN_GROUP_ID,
-                artifactId = "kotlin-daemon-embeddable",
-                version = KOTLIN_VERSION,
-                sha256 = "a26cc8e2d8619197cc4d115bea7766e9aa8e0f1e7876ea044ee1b9f305654601",
-                size = 345722
-            ),
-            Dependency(
-                groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-script-runtime",
                 version = KOTLIN_VERSION,
-                sha256 = "4ed97fd1e0c9bb1d0948ed5e63cc91456313a59518295b92b2c1514aef556150",
+                sha256 = "c304a67dba6a61dde560e6310920bed746307c3854f6675c29ac29114731b6b0",
                 size = 44759
             ),
             // END_COMPILER_CLASS_PATH

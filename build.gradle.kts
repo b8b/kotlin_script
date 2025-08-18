@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "2.2.0.28"
+version = "2.2.10.29"
 
 java {
     toolchain {
@@ -67,7 +67,7 @@ dependencies {
     examplesImplementation("org.apache.sshd:sshd-netty:2.+")
     examplesImplementation("org.apache.sshd:sshd-git:2.+")
     examplesImplementation("org.bouncycastle:bcpkix-jdk18on:1.+")
-    examplesImplementation("io.vertx:vertx-core:4.5.+")
+    examplesImplementation("io.vertx:vertx-core:4.+")
     examplesImplementation("com.github.ajalt.clikt:clikt-jvm:5.+")
     examplesImplementation("org.apache.james:apache-mime4j-core:latest.release")
     examplesImplementation("de.erichseifert.vectorgraphics2d:VectorGraphics2D:0.+")
