@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=1.9.21.19
+v=2.2.20.30
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -25,7 +25,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "425beb05a5896b09ee916c5754e8262a837e15b4c40d6e9802f959b37210928e "*) ;;
+  "c5d22045190769d5372f15d07ab30c49a07bc307561bf93356e6874aa6401f94 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
@@ -33,22 +33,23 @@ fi
 . "$kotlin_script_sh"; exit 2
 */
 
-///DEP=org.apache.bcel:bcel:6.7.0
-///DEP=org.apache.commons:commons-lang3:3.12.0
+///DEP=org.apache.bcel:bcel:6.11.0
+///DEP=commons-io:commons-io:2.20.0
+///DEP=org.apache.commons:commons-lang3:3.18.0
 
 ///DEP=com.willowtreeapps.assertk:assertk-jvm:0.28.0
 ///DEP=com.willowtreeapps.opentest4k:opentest4k-jvm:1.3.0
 ///DEP=org.opentest4j:opentest4j:1.3.0
 
-///DEP=org.junit.jupiter:junit-jupiter:5.10.1
-///DEP=org.junit.jupiter:junit-jupiter-api:5.10.1
+///DEP=org.junit.jupiter:junit-jupiter:5.14.0
+///DEP=org.junit.jupiter:junit-jupiter-api:5.14.0
 
-///DEP=org.junit.platform:junit-platform-commons:1.10.1
+///DEP=org.junit.platform:junit-platform-commons:1.14.0
 ///DEP=org.apiguardian:apiguardian-api:1.1.2
 
-///DEP=org.junit.jupiter:junit-jupiter-params:5.10.1
-///DEP=org.junit.jupiter:junit-jupiter-engine:5.10.1
-///DEP=org.junit.platform:junit-platform-engine:1.10.1
+///DEP=org.junit.jupiter:junit-jupiter-params:5.14.0
+///DEP=org.junit.jupiter:junit-jupiter-engine:5.14.0
+///DEP=org.junit.platform:junit-platform-engine:1.14.0
 
 ///INC=TestBasic.kt
 ///INC=TestCachePath.kt

@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "2.2.10.29"
+version = "2.2.20.30"
 
 java {
     toolchain {
@@ -67,7 +67,7 @@ dependencies {
     examplesImplementation("org.apache.sshd:sshd-netty:2.+")
     examplesImplementation("org.apache.sshd:sshd-git:2.+")
     examplesImplementation("org.bouncycastle:bcpkix-jdk18on:1.+")
-    examplesImplementation("io.vertx:vertx-core:4.+")
+    examplesImplementation("io.vertx:vertx-core:5.+")
     examplesImplementation("com.github.ajalt.clikt:clikt-jvm:5.+")
     examplesImplementation("org.apache.james:apache-mime4j-core:latest.release")
     examplesImplementation("de.erichseifert.vectorgraphics2d:VectorGraphics2D:0.+")
@@ -177,6 +177,9 @@ tasks.register<JavaExec>("updateLauncherSources") {
 
 tasks.register<JavaExec>("installMainJar") {
     dependsOn(mainJar, dokkaJar, kotlinSourcesJar)
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(11)
+    }.get()
     group = "Execution"
     description = "install kotlin_script to local repository"
     classpath = examples.runtimeClasspath
