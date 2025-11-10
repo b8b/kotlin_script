@@ -329,7 +329,7 @@ class KotlinScript(
         private const val KOTLIN_VERSION = "2.2.21"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.31"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.32"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
@@ -392,7 +392,7 @@ class KotlinScript(
 
         private val supportedJavaVersions = listOf(
             "1.8",
-            *(9 .. 25).map(Int::toString).toTypedArray()
+            *(9 .. 24).map(Int::toString).toTypedArray()
         )
 
         private const val KOTLIN_JS_COMPILER_MAIN =

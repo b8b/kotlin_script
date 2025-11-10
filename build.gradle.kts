@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "2.2.21.31"
+version = "2.2.21.32"
 
 java {
     toolchain {
