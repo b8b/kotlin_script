@@ -40,44 +40,44 @@ public class Launcher implements X509TrustManager, HostnameVerifier, Runnable {
     private final Path localMirror;
     private final Path localRepo;
 
-    private final String kotlinVersion = "2.2.20";
-    private final String kotlinScriptVersion = kotlinVersion + ".30";
+    private final String kotlinVersion = "2.2.21";
+    private final String kotlinScriptVersion = kotlinVersion + ".31";
     private final Path cacheDir;
 
     private final String[] dependencies = new String[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
-            "org/cikit/kotlin_script/2.2.20.30/kotlin_script-2.2.20.30.jar",
+            "org/cikit/kotlin_script/2.2.21.31/kotlin_script-2.2.21.31.jar",
             "com/github/ajalt/mordant/mordant-jvm/3.0.2/mordant-jvm-3.0.2.jar",
             "com/github/ajalt/mordant/mordant-jvm-jna-jvm/3.0.2/mordant-jvm-jna-jvm-3.0.2.jar",
             "com/github/ajalt/mordant/mordant-jvm-ffm-jvm/3.0.2/mordant-jvm-ffm-jvm-3.0.2.jar",
             "com/github/ajalt/mordant/mordant-core-jvm/3.0.2/mordant-core-jvm-3.0.2.jar",
             "com/github/ajalt/colormath/colormath-jvm/3.6.0/colormath-jvm-3.6.0.jar",
-            "org/jetbrains/kotlin/kotlin-stdlib/2.2.20/kotlin-stdlib-2.2.20.jar",
+            "org/jetbrains/kotlin/kotlin-stdlib/2.2.21/kotlin-stdlib-2.2.21.jar",
             "net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar",
             // END_KOTLIN_SCRIPT_DEPENDENCY_FILE_NAMES
     };
 
     private final byte[][] checksums = new byte[][] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
-            new byte[]{16, 87, 58, -117, 126, -36, 9, 96, -65, -122, 52, 82, -62, -17, 98, -53, 15, 38, -30, 110, 29, 47, -73, -31, 33, 43, 32, 92, -83, -102, -13, 67},
+            new byte[]{7, -114, -3, -108, -120, 51, 44, -97, -99, 34, 125, 29, -28, -68, -61, 17, 60, 81, -48, -38, -37, -93, 104, -93, 107, -23, -25, 65, 52, 29, -119, 113},
             new byte[]{-98, -45, -71, 118, -4, -52, -57, -115, -89, 70, -44, -104, 102, -6, -114, -69, -113, 16, 83, 10, -109, -59, 68, -22, 4, 32, 37, -102, 96, 125, -39, 94},
             new byte[]{65, 6, 52, 66, -56, -119, 27, 39, 116, 83, 106, -101, -121, -91, 6, 42, 127, -46, 14, 111, 25, 73, -105, 76, 109, -89, 47, 73, 71, 45, 111, 77},
             new byte[]{16, 34, 71, -124, 18, 92, -97, 23, -126, -63, -44, -15, -45, -113, 61, 84, 35, 111, -52, 85, -64, 48, -94, -83, 0, -53, -28, 48, 110, 22, 43, -92},
             new byte[]{101, 28, 59, -41, 79, -12, -23, -115, -76, -43, -114, 61, -49, 75, 20, -24, 9, -98, -32, -46, 32, -26, 114, -11, 113, -8, -49, -18, -28, 73, 57, 5},
             new byte[]{89, -9, 65, -83, -2, 98, 5, 48, 102, 120, 45, -117, 26, 69, -81, -48, 102, -123, -92, -68, 100, -77, 50, 119, -27, 72, 118, -71, -109, -19, -120, 92},
-            new byte[]{-120, 54, -52, -1, -45, 88, 95, -83, -38, -103, 1, 36, 75, 32, -44, 41, 1, -46, -13, -51, 88, 16, 88, -40, 67, 78, 47, -6, -68, -13, -93, -25},
+            new byte[]{101, 88, -93, -46, 51, -38, 86, -94, 9, 52, -77, 33, 89, -7, -37, 95, -122, -19, 88, 22, -17, 9, -113, 120, -94, -62, 35, -36, 106, -69, 121, -35},
             new byte[]{-91, 100, 21, -115, 40, -85, 81, 39, -4, 106, -107, -128, 40, -19, 84, 39, -97, -32, -103, -106, 98, -60, 100, 37, -74, -93, -80, -102, 42, 82, 9, 77},
             // END_KOTLIN_SCRIPT_DEPENDENCY_CHECKSUMS
     };
     private final long[] sizes = new long[] {
             // BEGIN_KOTLIN_SCRIPT_DEPENDENCY_SIZES
-            73878L,
+            73881L,
             436L,
             38316L,
             229126L,
             653548L,
             352563L,
-            1761444L,
+            1761445L,
             2001532L,
             // END_KOTLIN_SCRIPT_DEPENDENCY_SIZES
     };
