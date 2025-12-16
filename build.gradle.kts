@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "2.2.21.32"
+version = "2.3.0.33"
 
 java {
     toolchain {
@@ -64,8 +64,6 @@ dependencies {
     examplesImplementation("org.apache.commons:commons-compress:1.+")
     examplesImplementation("org.eclipse.jdt:ecj:3.33.0")
     examplesImplementation("com.pi4j:pi4j-core:1.2")
-    examplesImplementation("org.apache.sshd:sshd-netty:2.+")
-    examplesImplementation("org.apache.sshd:sshd-git:2.+")
     examplesImplementation("org.bouncycastle:bcpkix-jdk18on:1.+")
     examplesImplementation("io.vertx:vertx-core:5.+")
     examplesImplementation("com.github.ajalt.clikt:clikt-jvm:5.+")

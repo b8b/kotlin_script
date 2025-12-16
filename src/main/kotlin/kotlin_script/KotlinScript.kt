@@ -326,17 +326,17 @@ class KotlinScript(
     }
 
     companion object {
-        private const val KOTLIN_VERSION = "2.2.21"
+        private const val KOTLIN_VERSION = "2.3.0"
         private const val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
 
-        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.32"
+        private const val KOTLIN_SCRIPT_VERSION = "$KOTLIN_VERSION.33"
 
         private val kotlinStdlibDependency = Dependency(
             groupId = KOTLIN_GROUP_ID,
             artifactId = "kotlin-stdlib",
             version = KOTLIN_VERSION,
-            sha256 = "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd",
-            size = 1761445
+            sha256 = "887587c91713250ad52fe14ad9166d042c33835049890e9437f355ffc5a195b1",
+            size = 1796996
         )
 
         private val compilerClassPath = listOf(
@@ -346,8 +346,15 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-compiler-embeddable",
                 version = KOTLIN_VERSION,
-                sha256 = "9588fa696ac5507af764fd5660df6894185e12704ec1bc3f5cb772af4987f295",
-                size = 56908512
+                sha256 = "8dbd882fa58c3d17e683a27390288315f8b490f8e3e3b1be4dc3e280d37e285a",
+                size = 57669576
+            ),
+            Dependency(
+                groupId = KOTLIN_GROUP_ID,
+                artifactId = "kotlin-daemon-embeddable",
+                version = KOTLIN_VERSION,
+                sha256 = "39bcb02d8c293aa678554c8b49d7ff84657021709283c6186e3a40806af9bd10",
+                size = 348228
             ),
             Dependency(
                 groupId = "org.jetbrains.kotlin",
@@ -364,13 +371,6 @@ class KotlinScript(
                 size = 17536
             ),
             Dependency(
-                groupId = KOTLIN_GROUP_ID,
-                artifactId = "kotlin-daemon-embeddable",
-                version = KOTLIN_VERSION,
-                sha256 = "91c0673c22e44b054ae0314d323860ebe1f3aff3f0ebc74fff82c4733dde09be",
-                size = 347987
-            ),
-            Dependency(
                 groupId = "org.jetbrains.kotlinx",
                 artifactId = "kotlinx-coroutines-core-jvm",
                 version = "1.8.0",
@@ -381,8 +381,8 @@ class KotlinScript(
                 groupId = KOTLIN_GROUP_ID,
                 artifactId = "kotlin-script-runtime",
                 version = KOTLIN_VERSION,
-                sha256 = "2b1519b427b514d1536c1b425674b03fe914af637924028e9959c6625442df51",
-                size = 44769
+                sha256 = "db826961371d6605318d9c4e4bfcdbfac94c3a0892cdcabd55224870fead57f1",
+                size = 44940
             ),
             // END_COMPILER_CLASS_PATH
         )
@@ -392,7 +392,7 @@ class KotlinScript(
 
         private val supportedJavaVersions = listOf(
             "1.8",
-            *(9 .. 24).map(Int::toString).toTypedArray()
+            *(9 .. 25).map(Int::toString).toTypedArray()
         )
 
         private const val KOTLIN_JS_COMPILER_MAIN =
