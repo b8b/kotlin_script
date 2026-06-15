@@ -10,7 +10,7 @@
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=2.2.20.30
+v=2.4.0.34
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -25,7 +25,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "c5d22045190769d5372f15d07ab30c49a07bc307561bf93356e6874aa6401f94 "*) ;;
+  "b09dba200ac10d4a14789922c6d6322bd9afa754df681e6e6c75c1b1fabd88a2 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac

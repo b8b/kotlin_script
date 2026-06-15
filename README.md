@@ -39,7 +39,7 @@ This version of `kotlin_script` is used by embedding
 #   |_|\_\___/ \__|_|_|_| |_| |___/\___|_|  |_| .__/ \__|
 #                         ______              | |
 #                        |______|             |_|
-v=2.3.0.33
+v=2.4.0.34
 p=org/cikit/kotlin_script/"$v"/kotlin_script-"$v".sh
 url="${M2_CENTRAL_REPO:=https://repo1.maven.org/maven2}"/"$p"
 kotlin_script_sh="${M2_LOCAL_REPO:-"$HOME"/.m2/repository}"/"$p"
@@ -54,7 +54,7 @@ if ! [ -r "$kotlin_script_sh" ]; then
   fi
   dgst_cmd="$(command -v openssl) dgst -sha256 -r" || dgst_cmd=sha256sum
   case "$($dgst_cmd < "$kotlin_script_sh")" in
-  "bef2250e52a4ed3e912746d446e7d78acad30c790a4553eb365a5ec5d61f702f "*) ;;
+  "b09dba200ac10d4a14789922c6d6322bd9afa754df681e6e6c75c1b1fabd88a2 "*) ;;
   *) echo "error: failed to verify kotlin_script.sh" >&2
      rm -f "$kotlin_script_sh"; exit 1;;
   esac
